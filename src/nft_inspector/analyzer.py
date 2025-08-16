@@ -73,6 +73,7 @@ class UrlAnalyzer:
             is_gateway = 'ipfs' in url or 'arweave' in url
         try:            
             with httpx.Client(timeout=self.timeout) as client:
+                # Try HEAD request first
                 response = client.head(analysis_url)
                 response.raise_for_status()
                 
@@ -80,6 +81,18 @@ class UrlAnalyzer:
                 size_bytes = None
                 if "content-length" in response.headers:
                     size_bytes = int(response.headers["content-length"])
+                else:
+                    # Fallback to GET request if HEAD doesn't provide content-length
+                    try:
+                        get_response = client.get(analysis_url)
+                        get_response.raise_for_status()
+                        size_bytes = len(get_response.content)
+                        # Update mime_type from GET if it wasn't in HEAD
+                        if not mime_type:
+                            mime_type = get_response.headers.get("content-type")
+                    except Exception:
+                        # If GET fails, continue without size
+                        pass
                 
                 return UrlInfo(
                     url=url,
