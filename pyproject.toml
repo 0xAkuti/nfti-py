@@ -1,0 +1,22 @@
+[project]
+name = "nft-inspector"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+authors = [
+    { name = "0xAkuti", email = "40723201+0xAkuti@users.noreply.github.com" }
+]
+requires-python = ">=3.12"
+dependencies = [
+    "httpx>=0.28.1",
+    "pydantic>=2.11.7",
+    "typer>=0.16.0",
+    "web3>=7.13.0",
+]
+
+[project.scripts]
+nft-inspector = "nft_inspector:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
