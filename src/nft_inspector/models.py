@@ -1,6 +1,6 @@
-from typing import Optional, List, Any, Dict
-from pydantic import BaseModel, HttpUrl, Field
-from .types import TokenURI
+from typing import Optional, List, Any
+from pydantic import BaseModel, Field
+from .types import TokenURI, EthereumAddress
 
 
 class NFTAttribute(BaseModel):
@@ -24,8 +24,8 @@ class NFTMetadata(BaseModel):
 
 
 class TokenInfo(BaseModel):
-    contract_address: str
-    token_id: str
+    contract_address: EthereumAddress
+    token_id: int
     token_uri: Optional[TokenURI] = None
     metadata: Optional[NFTMetadata] = None
     
