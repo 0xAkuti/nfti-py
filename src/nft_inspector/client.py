@@ -3,6 +3,7 @@ from web3 import Web3
 
 from .models import TokenInfo, NFTMetadata
 from .uri_parsers import URIResolver
+from .analyzer import UrlAnalyzer
 
 
 ERC721_ABI = [
@@ -17,10 +18,11 @@ ERC721_ABI = [
 
 
 class NFTInspector:
-    def __init__(self, rpc_url: Optional[str] = None):
+    def __init__(self, rpc_url: Optional[str] = None, analyze_media: bool = True):
         self.rpc_url = rpc_url or "https://eth.llamarpc.com"
         self.w3 = Web3(Web3.HTTPProvider(self.rpc_url))
         self.uri_resolver = URIResolver()
+        self.url_analyzer = UrlAnalyzer()
     
     def get_token_uri(self, contract_address: str, token_id: int) -> Optional[str]:
         try:
@@ -46,13 +48,18 @@ class NFTInspector:
     def inspect_token(self, contract_address: str, token_id: int) -> TokenInfo:
         token_uri = self.get_token_uri(contract_address, token_id)
         metadata = None
+        data_report = None
         
         if token_uri:
             metadata = self.fetch_metadata(token_uri)
+            
+            if metadata:
+                data_report = self.url_analyzer.analyze(token_uri, metadata)
         
         return TokenInfo(
             contract_address=contract_address,
-            token_id=str(token_id),
+            token_id=token_id,
             token_uri=token_uri,
-            metadata=metadata
+            metadata=metadata,
+            data_report=data_report
         )

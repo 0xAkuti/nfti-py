@@ -48,3 +48,14 @@ class DisplayType(str, Enum):
     BOOST_NUMBER = "boost_number"
     BOOST_PERCENTAGE = "boost_percentage"
     DATE = "date"
+
+
+class MediaProtocol(str, Enum):
+    """Enum for media protocols"""
+    HTTP = "http"
+    HTTPS = "https"
+    IPFS = "ipfs"
+    IPNS = "ipns"
+    ARWEAVE = "ar"
+    DATA_URI = "data"
+    UNKNOWN = "unknown"
