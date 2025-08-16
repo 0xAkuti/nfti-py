@@ -1,7 +1,6 @@
-import json
-import base64
 from typing import Dict, Any
 from .base import URIParser
+from ..data_uri_utils import DataURIParser as DataURIUtility
 
 
 class DataURIParser(URIParser):
@@ -9,9 +8,5 @@ class DataURIParser(URIParser):
         return uri.startswith("data:")
     
     def parse(self, uri: str) -> Dict[str, Any]:
-        if not uri.startswith("data:application/json;base64,"):
-            raise ValueError("Only base64 encoded JSON data URIs are supported")
-        
-        base64_data = uri.split("data:application/json;base64,")[1]
-        decoded_data = base64.b64decode(base64_data).decode('utf-8')
-        return json.loads(decoded_data)
+        data_info = DataURIUtility.parse(uri)
+        return data_info.as_json()

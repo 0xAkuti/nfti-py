@@ -3,7 +3,7 @@ from urllib.parse import urlparse
 
 from .models import UrlInfo, TokenDataReport, NFTMetadata
 from .types import MediaProtocol
-
+from .data_uri_utils import DataURIParser
 
 class UrlAnalyzer:
     def __init__(self, timeout: float = 10.0):
@@ -30,25 +30,15 @@ class UrlAnalyzer:
     def _analyze_data_uri(self, url: str) -> UrlInfo:
         """Analyze data URI"""
         try:
-            # Parse data URI: data:[<mediatype>][;base64],<data>
-            if not url.startswith("data:"):
-                raise ValueError("Not a data URI")
-            
-            header, data = url.split(",", 1)
-            mediatype = header.replace("data:", "").split(";")[0]
-            
-            # Estimate size (base64 encoded data is ~1.33x original size)
-            if ";base64" in header:
-                estimated_size = len(data) * 3 // 4
-            else:
-                estimated_size = len(data)
+            data_info = DataURIParser.parse(url)
             
             return UrlInfo(
                 url=url,
                 protocol=MediaProtocol.DATA_URI,
-                mime_type=mediatype or None,
-                size_bytes=estimated_size,
-                accessible=True
+                mime_type=data_info.media_type,
+                size_bytes=data_info.size_bytes,
+                accessible=True,
+                encoding=data_info.encoding
             )
         except Exception as e:
             return UrlInfo(
