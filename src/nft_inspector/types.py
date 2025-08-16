@@ -13,6 +13,7 @@ class TokenURI(AnyUrl):
         allowed_schemes=['http', 'https', 'ipfs', 'ipns', 'ar', 'data']
     )
 
+WeakTokenURI = TokenURI | str
 
 class EthereumAddress(str):
     """A type that validates Ethereum addresses"""
@@ -58,4 +59,12 @@ class MediaProtocol(str, Enum):
     IPNS = "ipns"
     ARWEAVE = "ar"
     DATA_URI = "data"
+    NONE = "none"
     UNKNOWN = "unknown"
+
+
+class DataEncoding(str, Enum):
+    """Enum for data URI encoding types"""
+    BASE64 = "base64"
+    PERCENT = "percent"
+    PLAIN = "plain"

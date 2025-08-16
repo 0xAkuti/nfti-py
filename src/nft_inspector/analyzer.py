@@ -1,9 +1,18 @@
 import httpx
+import urllib.parse
+import json
 from urllib.parse import urlparse
 
 from .models import UrlInfo, TokenDataReport, NFTMetadata
 from .types import MediaProtocol
 from .data_uri_utils import DataURIParser
+
+def is_valid_json(json_string):
+    try:
+        json.loads(json_string)
+        return True
+    except (ValueError, TypeError):
+        return False
 
 class UrlAnalyzer:
     def __init__(self, timeout: float = 10.0):
@@ -16,8 +25,9 @@ class UrlAnalyzer:
         
         parsed = urlparse(url)
         scheme = parsed.scheme.lower()
-        
+
         protocol_map = {
+            "": MediaProtocol.NONE,
             "http": MediaProtocol.HTTP,
             "https": MediaProtocol.HTTPS,
             "ipfs": MediaProtocol.IPFS,
@@ -48,6 +58,25 @@ class UrlAnalyzer:
                 error=str(e)
             )
     
+    def _analyze_plain_data(self, url: str) -> UrlInfo:
+        """Analyze plain data"""
+        size_bytes = len(url)
+        # try to guess mime type from plain text
+        if '<svg' in url:
+            mime_type = 'image/svg+xml'
+        elif is_valid_json(url):
+            mime_type = 'application/json'
+        else:
+            mime_type = 'text/plain'
+
+        return UrlInfo(
+            url=url,
+            protocol=MediaProtocol.NONE,
+            mime_type=mime_type,
+            size_bytes=size_bytes,
+            accessible=True
+        )
+
     def _analyze_http_url(self, url: str, protocol: MediaProtocol) -> UrlInfo:
         """Analyze HTTP/HTTPS URL"""
 
@@ -108,6 +137,8 @@ class UrlAnalyzer:
         
         if protocol == MediaProtocol.DATA_URI:
             return self._analyze_data_uri(url)
+        elif protocol == MediaProtocol.NONE:
+            return self._analyze_plain_data(url)
         else:
             return self._analyze_http_url(url, protocol)
     
