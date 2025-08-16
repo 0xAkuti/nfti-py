@@ -13,11 +13,11 @@ class NFTMetadata(BaseModel):
     name: Optional[str] = None
     description: Optional[str] = None
     image: Optional[TokenURI] = None
-    external_url: Optional[TokenURI] = None
+    image_data: Optional[TokenURI] = None
     animation_url: Optional[TokenURI] = None
+    external_url: Optional[TokenURI] = None
     background_color: Optional[str] = None
     attributes: Optional[List[NFTAttribute]] = Field(default_factory=list)
-    properties: Optional[Dict[str, Any]] = None
     
     class Config:
         extra = "allow"
