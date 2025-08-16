@@ -1,12 +1,13 @@
-from typing import Optional, List, Any
+from typing import Optional, List
 from pydantic import BaseModel, Field
-from .types import TokenURI, EthereumAddress
+from .types import TokenURI, EthereumAddress, DisplayType
 
 
 class NFTAttribute(BaseModel):
     trait_type: str
-    value: Any
-    display_type: Optional[str] = None
+    value: str | int | float
+    display_type: Optional[DisplayType] = None
+    max_value: Optional[int | float] = None # only if value is a number
 
 
 class NFTMetadata(BaseModel):

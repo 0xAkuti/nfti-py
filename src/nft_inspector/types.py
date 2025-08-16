@@ -1,4 +1,5 @@
 from typing import Any
+from enum import Enum
 from pydantic import AnyUrl, GetCoreSchemaHandler
 from pydantic.networks import UrlConstraints
 from pydantic_core import core_schema
@@ -35,8 +36,15 @@ class EthereumAddress(str):
         if not Web3.is_address(value):
             raise ValueError(f"Invalid Ethereum address: {value}")
         
-        # Return checksummed address
         return cls(Web3.to_checksum_address(value))
     
     def __repr__(self) -> str:
         return f"EthereumAddress('{self}')"
+
+
+class DisplayType(str, Enum):
+    """Enum for NFT attribute display types"""
+    NUMBER = "number"
+    BOOST_NUMBER = "boost_number"
+    BOOST_PERCENTAGE = "boost_percentage"
+    DATE = "date"
