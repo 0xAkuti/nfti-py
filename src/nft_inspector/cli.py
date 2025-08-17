@@ -1,9 +1,25 @@
 from typing import Optional
+import asyncio
 import typer
 from .client import NFTInspector
 
 
 app = typer.Typer()
+
+
+async def _inspect_async(
+    contract_address: str,
+    token_id: int,
+    rpc_url: Optional[str],
+    output: str,
+    analyze_media: bool,
+):
+    """Async implementation of inspect"""
+    inspector = NFTInspector(rpc_url=rpc_url, analyze_media=analyze_media)
+    
+    token_info = await inspector.inspect_token(contract_address, token_id)
+    
+    return token_info
 
 
 @app.command()
@@ -15,9 +31,7 @@ def inspect(
     analyze_media: bool = typer.Option(True, help="Analyze media URLs"),
 ):
     """Inspect an NFT and fetch its metadata"""
-    inspector = NFTInspector(rpc_url=rpc_url, analyze_media=analyze_media)
-    
-    token_info = inspector.inspect_token(contract_address, token_id)
+    token_info = asyncio.run(_inspect_async(contract_address, token_id, rpc_url, output, analyze_media))
     
     if output == "json":
         typer.echo(token_info.model_dump_json(indent=2))

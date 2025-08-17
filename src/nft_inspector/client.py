@@ -36,25 +36,25 @@ class NFTInspector:
             print(f"Error getting tokenURI: {e}")
             return None
     
-    def fetch_metadata(self, token_uri: str) -> Optional[NFTMetadata]:
+    async def fetch_metadata(self, token_uri: str) -> Optional[NFTMetadata]:
         try:
-            metadata_json = self.uri_resolver.resolve(token_uri)
+            metadata_json = await self.uri_resolver.resolve(token_uri)
             return NFTMetadata.model_validate(metadata_json)
             
         except Exception as e:
             print(f"Error fetching metadata: {e}")
             return None
     
-    def inspect_token(self, contract_address: str, token_id: int) -> TokenInfo:
+    async def inspect_token(self, contract_address: str, token_id: int) -> TokenInfo:
         token_uri = self.get_token_uri(contract_address, token_id)
         metadata = None
         data_report = None
         
         if token_uri:
-            metadata = self.fetch_metadata(token_uri)
+            metadata = await self.fetch_metadata(token_uri)
             
             if metadata:
-                data_report = self.url_analyzer.analyze(token_uri, metadata)
+                data_report = await self.url_analyzer.analyze(token_uri, metadata)
         
         return TokenInfo(
             contract_address=contract_address,

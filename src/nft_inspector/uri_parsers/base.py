@@ -9,6 +9,6 @@ class URIParser(ABC):
         pass
     
     @abstractmethod
-    def parse(self, uri: str) -> Dict[str, Any]:
+    async def parse(self, uri: str) -> Dict[str, Any]:
         """Parse the URI and return metadata as a dictionary"""
         pass

@@ -10,8 +10,8 @@ class HTTPParser(URIParser):
     def can_handle(self, uri: str) -> bool:
         return uri.startswith(("http://", "https://"))
     
-    def parse(self, uri: str) -> Dict[str, Any]:
-        with httpx.Client(timeout=self.timeout) as client:
-            response = client.get(uri)
+    async def parse(self, uri: str) -> Dict[str, Any]:
+        async with httpx.AsyncClient(timeout=self.timeout) as client:
+            response = await client.get(uri)
             response.raise_for_status()
             return response.json()

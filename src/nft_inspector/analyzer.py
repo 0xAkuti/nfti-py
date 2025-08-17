@@ -77,7 +77,7 @@ class UrlAnalyzer:
             accessible=True
         )
 
-    def _analyze_http_url(self, url: str, protocol: MediaProtocol) -> UrlInfo:
+    async def _analyze_http_url(self, url: str, protocol: MediaProtocol) -> UrlInfo:
         """Analyze HTTP/HTTPS URL"""
 
         is_gateway = False
@@ -91,9 +91,9 @@ class UrlAnalyzer:
             # check if the url is a gateway
             is_gateway = 'ipfs' in url or 'arweave' in url
         try:            
-            with httpx.Client(timeout=self.timeout) as client:
+            async with httpx.AsyncClient(timeout=self.timeout) as client:
                 # Try HEAD request first
-                response = client.head(analysis_url)
+                response = await client.head(analysis_url)
                 response.raise_for_status()
                 
                 mime_type = response.headers.get("content-type")
@@ -103,7 +103,7 @@ class UrlAnalyzer:
                 else:
                     # Fallback to GET request if HEAD doesn't provide content-length
                     try:
-                        get_response = client.get(analysis_url)
+                        get_response = await client.get(analysis_url)
                         get_response.raise_for_status()
                         size_bytes = len(get_response.content)
                         # Update mime_type from GET if it wasn't in HEAD
@@ -130,7 +130,7 @@ class UrlAnalyzer:
                 error=str(e)
             )
     
-    def analyze_media(self, url: str) -> UrlInfo:
+    async def analyze_media(self, url: str) -> UrlInfo:
         """Analyze a single media URL"""
         protocol = self._extract_protocol(url)
 
@@ -140,22 +140,22 @@ class UrlAnalyzer:
         elif protocol == MediaProtocol.NONE:
             return self._analyze_plain_data(url)
         else:
-            return self._analyze_http_url(url, protocol)
+            return await self._analyze_http_url(url, protocol)
     
-    def analyze(self, token_uri: str, metadata: NFTMetadata) -> TokenDataReport:
+    async def analyze(self, token_uri: str, metadata: NFTMetadata) -> TokenDataReport:
         """Analyze all media URLs in metadata"""
-        report = TokenDataReport(token_uri=self.analyze_media(token_uri))
+        report = TokenDataReport(token_uri=await self.analyze_media(token_uri))
         
         if metadata.image:
-            report.image = self.analyze_media(str(metadata.image))
+            report.image = await self.analyze_media(str(metadata.image))
         
         if metadata.image_data:
-            report.image_data = self.analyze_media(str(metadata.image_data))
+            report.image_data = await self.analyze_media(str(metadata.image_data))
         
         if metadata.animation_url:
-            report.animation_url = self.analyze_media(str(metadata.animation_url))
+            report.animation_url = await self.analyze_media(str(metadata.animation_url))
         
         if metadata.external_url:
-            report.external_url = self.analyze_media(str(metadata.external_url))
+            report.external_url = await self.analyze_media(str(metadata.external_url))
         
         return report
