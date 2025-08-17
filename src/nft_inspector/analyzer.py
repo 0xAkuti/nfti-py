@@ -145,35 +145,23 @@ class UrlAnalyzer:
     async def analyze(self, token_uri: str, metadata: NFTMetadata) -> TokenDataReport:
         """Analyze all media URLs in metadata"""
         report = TokenDataReport(token_uri=await self.analyze_media(token_uri))
-        
-        if metadata.image:
-            report.image = await self.analyze_media(str(metadata.image))
-        
-        if metadata.image_data:
-            report.image_data = await self.analyze_media(str(metadata.image_data))
-        
-        if metadata.animation_url:
-            report.animation_url = await self.analyze_media(str(metadata.animation_url))
-        
-        if metadata.external_url:
-            report.external_url = await self.analyze_media(str(metadata.external_url))
+
+        # iterate optional fields
+        for field_name, field_info in TokenDataReport.model_fields.items():
+            if field_info.is_required() or (field_value := getattr(metadata, field_name)) is None:
+                continue
+            setattr(report, field_name, await self.analyze_media(field_value))
         
         return report
     
-    async def analyze_contract(self, contract_uri: str, contract_metadata: ContractURI) -> ContractDataReport:
+    async def analyze_contract(self, contract_uri: str, metadata: ContractURI) -> ContractDataReport:
         """Analyze all media URLs in contract metadata"""
         report = ContractDataReport(contract_uri=await self.analyze_media(contract_uri))
         
-        if contract_metadata.image:
-            report.image = await self.analyze_media(str(contract_metadata.image))
-        
-        if contract_metadata.banner_image:
-            report.banner_image = await self.analyze_media(str(contract_metadata.banner_image))
-        
-        if contract_metadata.featured_image:
-            report.featured_image = await self.analyze_media(str(contract_metadata.featured_image))
-        
-        if contract_metadata.external_link:
-            report.external_link = await self.analyze_media(str(contract_metadata.external_link))
+        # iterate optional fields
+        for field_name, field_info in ContractDataReport.model_fields.items():
+            if field_info.is_required() or (field_value := getattr(metadata, field_name)) is None:
+                continue
+            setattr(report, field_name, await self.analyze_media(field_value))
         
         return report
