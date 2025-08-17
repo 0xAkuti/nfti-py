@@ -3,7 +3,7 @@ import urllib.parse
 import json
 from urllib.parse import urlparse
 
-from .models import UrlInfo, TokenDataReport, NFTMetadata
+from .models import UrlInfo, TokenDataReport, ContractDataReport, NFTMetadata, ContractURI
 from .types import MediaProtocol
 from .data_uri_utils import DataURIParser
 
@@ -157,5 +157,23 @@ class UrlAnalyzer:
         
         if metadata.external_url:
             report.external_url = await self.analyze_media(str(metadata.external_url))
+        
+        return report
+    
+    async def analyze_contract(self, contract_uri: str, contract_metadata: ContractURI) -> ContractDataReport:
+        """Analyze all media URLs in contract metadata"""
+        report = ContractDataReport(contract_uri=await self.analyze_media(contract_uri))
+        
+        if contract_metadata.image:
+            report.image = await self.analyze_media(str(contract_metadata.image))
+        
+        if contract_metadata.banner_image:
+            report.banner_image = await self.analyze_media(str(contract_metadata.banner_image))
+        
+        if contract_metadata.featured_image:
+            report.featured_image = await self.analyze_media(str(contract_metadata.featured_image))
+        
+        if contract_metadata.external_link:
+            report.external_link = await self.analyze_media(str(contract_metadata.external_link))
         
         return report

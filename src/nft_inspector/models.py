@@ -29,6 +29,14 @@ class TokenDataReport(BaseModel):
     image_data: Optional[UrlInfo] = None
 
 
+class ContractDataReport(BaseModel):
+    contract_uri: UrlInfo
+    image: Optional[UrlInfo] = None
+    banner_image: Optional[UrlInfo] = None
+    featured_image: Optional[UrlInfo] = None
+    external_link: Optional[UrlInfo] = None
+
+
 class NFTMetadata(BaseModel):
     name: Optional[str] = None
     description: Optional[str] = None
@@ -51,6 +59,7 @@ class TokenInfo(BaseModel):
     data_report: Optional[TokenDataReport] = None
     contract_uri: Optional[TokenURI] = None
     contract_metadata: Optional["ContractURI"] = None
+    contract_data_report: Optional[ContractDataReport] = None
     
     class Config:
         extra = "allow"

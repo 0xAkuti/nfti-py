@@ -111,6 +111,7 @@ class NFTInspector:
         metadata = None
         contract_metadata = None
         data_report = None
+        contract_data_report = None
         
         if token_uri:
             metadata = await self.fetch_metadata(token_uri)
@@ -120,6 +121,9 @@ class NFTInspector:
         
         if contract_uri:
             contract_metadata = await self.fetch_contract_metadata(contract_uri)
+            
+            if contract_metadata:
+                contract_data_report = await self.url_analyzer.analyze_contract(contract_uri, contract_metadata)
         
         return TokenInfo(
             contract_address=contract_address,
@@ -128,21 +132,27 @@ class NFTInspector:
             metadata=metadata,
             data_report=data_report,
             contract_uri=contract_uri,
-            contract_metadata=contract_metadata
+            contract_metadata=contract_metadata,
+            contract_data_report=contract_data_report
         )
     
     async def inspect_contract(self, contract_address: str) -> dict:
         """Inspect contract metadata only"""
         contract_uri = await self.get_contract_uri(contract_address)
         contract_metadata = None
+        contract_data_report = None
         
         if contract_uri:
             contract_metadata = await self.fetch_contract_metadata(contract_uri)
+            
+            if contract_metadata:
+                contract_data_report = await self.url_analyzer.analyze_contract(contract_uri, contract_metadata)
         
         return {
             "contract_address": contract_address,
             "contract_uri": contract_uri,
-            "contract_metadata": contract_metadata
+            "contract_metadata": contract_metadata,
+            "contract_data_report": contract_data_report
         }
     
     def get_current_chain_info(self):
