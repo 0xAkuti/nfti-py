@@ -5,6 +5,7 @@ from pathlib import Path
 from web3 import Web3
 
 from .chain_models import ChainInfo
+from .web3_wrapper import EnhancedWeb3
 
 
 class ChainProvider:
@@ -88,6 +89,14 @@ class ChainProvider:
         rpc_url = await self.get_working_rpc_url(chain_id)
         if rpc_url:
             return Web3(Web3.HTTPProvider(rpc_url))
+        return None
+    
+    async def get_enhanced_web3_connection(self, chain_id: int) -> Optional[EnhancedWeb3]:
+        """Get a working EnhancedWeb3 connection for the given chain ID"""
+        rpc_url = await self.get_working_rpc_url(chain_id)
+        if rpc_url:
+            web3_instance = Web3(Web3.HTTPProvider(rpc_url))
+            return EnhancedWeb3(web3_instance)
         return None
     
     def get_chain_info(self, chain_id: int) -> Optional[ChainInfo]:

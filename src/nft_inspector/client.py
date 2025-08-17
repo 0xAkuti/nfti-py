@@ -5,6 +5,8 @@ from .models import TokenInfo, NFTMetadata, ContractURI
 from .uri_parsers import URIResolver
 from .analyzer import UrlAnalyzer
 from .chains import ChainProvider
+from .chains.web3_wrapper import EnhancedWeb3
+from .types import RpcResult
 
 
 NFT_ABI = [
@@ -32,7 +34,7 @@ class NFTInspector:
         self.chain_provider = ChainProvider()
         self.chain_id = chain_id or 1  # Default to Ethereum mainnet
         self.rpc_url = rpc_url
-        self.w3 = None
+        self.w3: Optional[EnhancedWeb3] = None
         self.uri_resolver = URIResolver()
         self.url_analyzer = UrlAnalyzer()
         
@@ -46,10 +48,10 @@ class NFTInspector:
         
         if self.rpc_url:
             # Use provided RPC URL
-            self.w3 = Web3(Web3.HTTPProvider(self.rpc_url))
+            self.w3 = EnhancedWeb3(Web3(Web3.HTTPProvider(self.rpc_url)))
         else:
-            # Get working Web3 connection for the chain
-            self.w3 = await self.chain_provider.get_web3_connection(self.chain_id)
+            # Get working enhanced Web3 connection for the chain
+            self.w3 = await self.chain_provider.get_enhanced_web3_connection(self.chain_id)
             if not self.w3:
                 raise ValueError(f"No working RPC found for chain ID {self.chain_id}")
         
@@ -61,31 +63,27 @@ class NFTInspector:
         self._connection_initialized = False
         await self._ensure_connection()
     
-    async def get_token_uri(self, contract_address: str, token_id: int) -> Optional[str]:
-        try:
-            await self._ensure_connection()
-            contract_address = Web3.to_checksum_address(contract_address)
-            contract = self.w3.eth.contract(address=contract_address, abi=NFT_ABI)
-            
-            token_uri = contract.functions.tokenURI(token_id).call()
-            return token_uri if token_uri else None
-            
-        except Exception as e:
-            print(f"Error getting tokenURI: {e}")
-            return None
+    async def get_token_uri(self, contract_address: str, token_id: int) -> RpcResult[str]:
+        await self._ensure_connection()
+        contract_address = self.w3.to_checksum_address(contract_address)
+        contract = self.w3.eth.contract(address=contract_address, abi=NFT_ABI)
+        
+        result = await self.w3.async_call_contract_function(
+            contract.functions.tokenURI(token_id),
+            context=f"tokenURI for contract {contract_address} token {token_id}"
+        )
+        return result
     
-    async def get_contract_uri(self, contract_address: str) -> Optional[str]:
-        try:
-            await self._ensure_connection()
-            contract_address = Web3.to_checksum_address(contract_address)
-            contract = self.w3.eth.contract(address=contract_address, abi=NFT_ABI)
-            
-            contract_uri = contract.functions.contractURI().call()
-            return contract_uri if contract_uri else None
-            
-        except Exception as e:
-            print(f"Error getting contractURI: {e}")
-            return None
+    async def get_contract_uri(self, contract_address: str) -> RpcResult[str]:
+        await self._ensure_connection()
+        contract_address = self.w3.to_checksum_address(contract_address)
+        contract = self.w3.eth.contract(address=contract_address, abi=NFT_ABI)
+        
+        result = await self.w3.async_call_contract_function(
+            contract.functions.contractURI(),
+            context=f"contractURI for contract {contract_address}"
+        )
+        return result
     
     async def fetch_metadata(self, token_uri: str) -> Optional[NFTMetadata]:
         try:
@@ -106,19 +104,23 @@ class NFTInspector:
             return None
     
     async def inspect_token(self, contract_address: str, token_id: int) -> TokenInfo:
-        token_uri = await self.get_token_uri(contract_address, token_id)
-        contract_uri = await self.get_contract_uri(contract_address)
+        token_uri_result = await self.get_token_uri(contract_address, token_id)
+        contract_uri_result = await self.get_contract_uri(contract_address)
         metadata = None
         contract_metadata = None
         data_report = None
         contract_data_report = None
         
+        # Handle token URI result
+        token_uri = token_uri_result.result if token_uri_result.success else None
         if token_uri:
             metadata = await self.fetch_metadata(token_uri)
             
             if metadata:
                 data_report = await self.url_analyzer.analyze(token_uri, metadata)
         
+        # Handle contract URI result  
+        contract_uri = contract_uri_result.result if contract_uri_result.success else None
         if contract_uri:
             contract_metadata = await self.fetch_contract_metadata(contract_uri)
             
@@ -138,10 +140,12 @@ class NFTInspector:
     
     async def inspect_contract(self, contract_address: str) -> dict:
         """Inspect contract metadata only"""
-        contract_uri = await self.get_contract_uri(contract_address)
+        contract_uri_result = await self.get_contract_uri(contract_address)
         contract_metadata = None
         contract_data_report = None
         
+        # Handle contract URI result
+        contract_uri = contract_uri_result.result if contract_uri_result.success else None
         if contract_uri:
             contract_metadata = await self.fetch_contract_metadata(contract_uri)
             
@@ -161,4 +165,6 @@ class NFTInspector:
     
     def get_current_rpc_url(self) -> Optional[str]:
         """Get the currently used RPC URL"""
-        return self.w3.provider.endpoint_uri
+        if self.w3:
+            return self.w3.provider.endpoint_uri
+        return None
