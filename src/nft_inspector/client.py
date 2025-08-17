@@ -1,16 +1,25 @@
 from typing import Optional
 from web3 import Web3
 
-from .models import TokenInfo, NFTMetadata
+from .models import TokenInfo, NFTMetadata, ContractURI
 from .uri_parsers import URIResolver
 from .analyzer import UrlAnalyzer
 from .chains import ChainProvider
 
 
-ERC721_ABI = [
+NFT_ABI = [
+    # tokenURI(uint256 tokenId), ERC721
     {
         "inputs": [{"internalType": "uint256", "name": "tokenId", "type": "uint256"}],
         "name": "tokenURI",
+        "outputs": [{"internalType": "string", "name": "", "type": "string"}],
+        "stateMutability": "view",
+        "type": "function"
+    },
+    # contractURI()
+    {
+        "inputs": [],
+        "name": "contractURI",
         "outputs": [{"internalType": "string", "name": "", "type": "string"}],
         "stateMutability": "view",
         "type": "function"
@@ -56,13 +65,26 @@ class NFTInspector:
         try:
             await self._ensure_connection()
             contract_address = Web3.to_checksum_address(contract_address)
-            contract = self.w3.eth.contract(address=contract_address, abi=ERC721_ABI)
+            contract = self.w3.eth.contract(address=contract_address, abi=NFT_ABI)
             
             token_uri = contract.functions.tokenURI(token_id).call()
             return token_uri if token_uri else None
             
         except Exception as e:
             print(f"Error getting tokenURI: {e}")
+            return None
+    
+    async def get_contract_uri(self, contract_address: str) -> Optional[str]:
+        try:
+            await self._ensure_connection()
+            contract_address = Web3.to_checksum_address(contract_address)
+            contract = self.w3.eth.contract(address=contract_address, abi=NFT_ABI)
+            
+            contract_uri = contract.functions.contractURI().call()
+            return contract_uri if contract_uri else None
+            
+        except Exception as e:
+            print(f"Error getting contractURI: {e}")
             return None
     
     async def fetch_metadata(self, token_uri: str) -> Optional[NFTMetadata]:
@@ -74,9 +96,20 @@ class NFTInspector:
             print(f"Error fetching metadata: {e}")
             return None
     
+    async def fetch_contract_metadata(self, contract_uri: str) -> Optional[ContractURI]:
+        try:
+            metadata_json = await self.uri_resolver.resolve(contract_uri)
+            return ContractURI.model_validate(metadata_json)
+            
+        except Exception as e:
+            print(f"Error fetching contract metadata: {e}")
+            return None
+    
     async def inspect_token(self, contract_address: str, token_id: int) -> TokenInfo:
         token_uri = await self.get_token_uri(contract_address, token_id)
+        contract_uri = await self.get_contract_uri(contract_address)
         metadata = None
+        contract_metadata = None
         data_report = None
         
         if token_uri:
@@ -85,13 +118,32 @@ class NFTInspector:
             if metadata:
                 data_report = await self.url_analyzer.analyze(token_uri, metadata)
         
+        if contract_uri:
+            contract_metadata = await self.fetch_contract_metadata(contract_uri)
+        
         return TokenInfo(
             contract_address=contract_address,
             token_id=token_id,
             token_uri=token_uri,
             metadata=metadata,
-            data_report=data_report
+            data_report=data_report,
+            contract_uri=contract_uri,
+            contract_metadata=contract_metadata
         )
+    
+    async def inspect_contract(self, contract_address: str) -> dict:
+        """Inspect contract metadata only"""
+        contract_uri = await self.get_contract_uri(contract_address)
+        contract_metadata = None
+        
+        if contract_uri:
+            contract_metadata = await self.fetch_contract_metadata(contract_uri)
+        
+        return {
+            "contract_address": contract_address,
+            "contract_uri": contract_uri,
+            "contract_metadata": contract_metadata
+        }
     
     def get_current_chain_info(self):
         """Get information about the currently selected chain"""

@@ -71,6 +71,76 @@ def inspect(
             show_media_info("Animation", token_info.data_report.animation_url)
             show_media_info("External URL", token_info.data_report.external_url)
             show_media_info("Image Data", token_info.data_report.image_data)
+        
+        # Show contract metadata if available
+        if token_info.contract_metadata:
+            typer.echo("\nContract Metadata:")
+            typer.echo(f"  Name: {token_info.contract_metadata.name}")
+            if token_info.contract_metadata.description:
+                typer.echo(f"  Description: {token_info.contract_metadata.description}")
+            if token_info.contract_metadata.symbol:
+                typer.echo(f"  Symbol: {token_info.contract_metadata.symbol}")
+            if token_info.contract_metadata.external_link:
+                typer.echo(f"  External Link: {token_info.contract_metadata.external_link}")
+
+
+async def _inspect_contract_async(
+    contract_address: str,
+    rpc_url: Optional[str],
+    chain_id: int,
+):
+    """Async implementation of contract inspection"""
+    inspector = NFTInspector(rpc_url=rpc_url, chain_id=chain_id)
+    
+    contract_info = await inspector.inspect_contract(contract_address)
+    
+    return contract_info
+
+
+@app.command("contract-uri")
+def contract_uri(
+    contract_address: str,
+    rpc_url: Optional[str] = typer.Option(None, help="Ethereum RPC URL"),
+    chain_id: int = typer.Option(1, help="Chain ID (default: 1 for Ethereum mainnet)"),
+    output: str = typer.Option("pretty", help="Output format", rich_help_panel="Output"),
+):
+    """Inspect contract metadata via contractURI"""
+    contract_info = asyncio.run(_inspect_contract_async(contract_address, rpc_url, chain_id))
+    
+    if output == "json":
+        import json
+        # Convert ContractURI to dict for JSON serialization
+        if contract_info["contract_metadata"]:
+            contract_info["contract_metadata"] = contract_info["contract_metadata"].model_dump()
+        typer.echo(json.dumps(contract_info, indent=2, default=str))
+    else:
+        typer.echo(f"Contract: {contract_info['contract_address']}")
+        typer.echo(f"Contract URI: {contract_info['contract_uri'] or 'Not found'}")
+        
+        if contract_info["contract_metadata"]:
+            metadata = contract_info["contract_metadata"]
+            typer.echo("\nContract Metadata:")
+            typer.echo(f"  Name: {metadata.name}")
+            if metadata.description:
+                typer.echo(f"  Description: {metadata.description}")
+            if metadata.symbol:
+                typer.echo(f"  Symbol: {metadata.symbol}")
+            if metadata.external_link:
+                typer.echo(f"  External Link: {metadata.external_link}")
+            if metadata.image:
+                typer.echo(f"  Image: {metadata.image}")
+            if metadata.banner_image:
+                typer.echo(f"  Banner Image: {metadata.banner_image}")
+            if metadata.featured_image:
+                typer.echo(f"  Featured Image: {metadata.featured_image}")
+            if metadata.seller_fee_basis_points is not None:
+                typer.echo(f"  Seller Fee: {metadata.seller_fee_basis_points / 100}%")
+            if metadata.fee_recipient:
+                typer.echo(f"  Fee Recipient: {metadata.fee_recipient}")
+            if metadata.collaborators:
+                typer.echo(f"  Collaborators: {', '.join(str(addr) for addr in metadata.collaborators)}")
+        else:
+            typer.echo("\nContract Metadata: Not available")
 
 
 if __name__ == "__main__":

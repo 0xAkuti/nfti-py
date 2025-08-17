@@ -49,6 +49,8 @@ class TokenInfo(BaseModel):
     token_uri: Optional[TokenURI] = None
     metadata: Optional[NFTMetadata] = None
     data_report: Optional[TokenDataReport] = None
+    contract_uri: Optional[TokenURI] = None
+    contract_metadata: Optional["ContractURI"] = None
     
     class Config:
         extra = "allow"
