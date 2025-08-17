@@ -1,5 +1,5 @@
 from typing import Optional, List
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, AliasChoices, model_validator
 from .types import TokenURI, EthereumAddress, DisplayType, MediaProtocol, DataEncoding, WeakTokenURI
 
 
@@ -68,13 +68,36 @@ class ContractURI(BaseModel):
     name: str
     symbol: Optional[str] = None # prefer ERC721 metadata over this
     description: Optional[str] = None
-    image: Optional[WeakTokenURI] = None
+    image: Optional[WeakTokenURI] = Field(
+        default=None,
+        validation_alias=AliasChoices('image', 'imageURI', 'image_url', 'logo', 'logo_url')
+    )
     banner_image: Optional[WeakTokenURI] = None
     featured_image: Optional[WeakTokenURI] = None
     external_link: Optional[WeakTokenURI] = None
     seller_fee_basis_points: Optional[int] = None # prefer royalties standard over this
     fee_recipient: Optional[EthereumAddress] = None # prefer royalties standard over this
     collaborators: Optional[List[EthereumAddress]] = Field(default_factory=list)
+    
+    @model_validator(mode='before')
+    @classmethod
+    def capture_image_field(cls, data):
+        if isinstance(data, dict):
+            # Check which image field was actually used and store it
+            for field_name in ['image', 'imageURI', 'image_url', 'logo', 'logo_url']:
+                if field_name in data and data[field_name] is not None:
+                    # Store the original field name in the instance
+                    if not hasattr(cls, '_original_image_field'):
+                        data['__pydantic_private__'] = {'image_field_used': field_name}
+                    break
+        return data
+
+    def get_image_field_used(self) -> Optional[str]:
+        """Returns the original field name that was used for the image"""
+        private_attrs = getattr(self, '__pydantic_private__', None)
+        if private_attrs and isinstance(private_attrs, dict):
+            return private_attrs.get('image_field_used')
+        return None
 
     class Config:
         extra = "allow"
