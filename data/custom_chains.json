@@ -1,0 +1,50 @@
+{
+    "1027303": {
+        "chainId": 1027303,
+        "name": "Facet",
+        "shortName": "facet",
+        "networkId": 1027303,
+        "nativeCurrency": {
+            "name": "Facet Token",
+            "symbol": "FCT",
+            "decimals": 18
+        },
+        "rpc": [
+            "https://mainnet.facet.org"
+        ],
+        "explorers": [
+            {
+                "name": "Facet Explorer",
+                "url": "https://explorer.facet.org",
+                "standard": "EIP3091"
+            }
+        ],
+        "chainSlug": "facet",
+        "icon": "/facet-logo.png",
+        "isTestnet": false
+    },
+    "16436858": {
+        "chainId": 16436858,
+        "name": "Facet Sepolia",
+        "shortName": "facet-sepolia",
+        "networkId": 16436858,
+        "nativeCurrency": {
+            "name": "Facet Token",
+            "symbol": "FCT",
+            "decimals": 18
+        },
+        "rpc": [
+            "https://sepolia.facet.org"
+        ],
+        "explorers": [
+            {
+                "name": "Facet Sepolia Explorer",
+                "url": "https://sepolia.explorer.facet.org",
+                "standard": "EIP3091"
+            }
+        ],
+        "chainSlug": "facet-sepolia",
+        "icon": "/fallback-logo.png",
+        "isTestnet": true
+    }
+}
