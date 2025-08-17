@@ -4,7 +4,7 @@ from typing import Optional, List, Dict
 from pathlib import Path
 from web3 import Web3
 
-from .chain_models import ChainInfo, RpcEndpoint
+from .chain_models import ChainInfo
 
 
 class ChainProvider:
@@ -34,7 +34,7 @@ class ChainProvider:
         if custom_file.exists():
             with open(custom_file, 'r') as f:
                 custom_chains = json.load(f)
-                for chain_id_str, chain_data in custom_chains.items():
+                for _, chain_data in custom_chains.items():
                     chain_info = ChainInfo.model_validate(chain_data)
                     self.chains[chain_info.chainId] = chain_info
     
