@@ -52,3 +52,18 @@ class TokenInfo(BaseModel):
     
     class Config:
         extra = "allow"
+
+class ContractURI(BaseModel):
+    name: str
+    symbol: Optional[str] = None # prefer ERC721 metadata over this
+    description: Optional[str] = None
+    image: Optional[WeakTokenURI] = None
+    banner_image: Optional[WeakTokenURI] = None
+    featured_image: Optional[WeakTokenURI] = None
+    external_link: Optional[WeakTokenURI] = None
+    seller_fee_basis_points: Optional[int] = None # prefer royalties standard over this
+    fee_recipient: Optional[EthereumAddress] = None # prefer royalties standard over this
+    collaborators: Optional[List[EthereumAddress]] = Field(default_factory=list)
+
+    class Config:
+        extra = "allow"
