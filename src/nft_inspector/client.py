@@ -4,6 +4,7 @@ from web3 import Web3
 from .models import TokenInfo, NFTMetadata
 from .uri_parsers import URIResolver
 from .analyzer import UrlAnalyzer
+from .chains import ChainProvider
 
 
 ERC721_ABI = [
@@ -18,14 +19,42 @@ ERC721_ABI = [
 
 
 class NFTInspector:
-    def __init__(self, rpc_url: Optional[str] = None, analyze_media: bool = True):
-        self.rpc_url = rpc_url or "https://eth.llamarpc.com"
-        self.w3 = Web3(Web3.HTTPProvider(self.rpc_url))
+    def __init__(self, rpc_url: Optional[str] = None, chain_id: Optional[int] = None, analyze_media: bool = True):
+        self.chain_provider = ChainProvider()
+        self.chain_id = chain_id or 1  # Default to Ethereum mainnet
+        self.rpc_url = rpc_url
+        self.w3 = None
         self.uri_resolver = URIResolver()
         self.url_analyzer = UrlAnalyzer()
+        
+        # Initialize Web3 connection (will be set up lazily in _ensure_connection)
+        self._connection_initialized = False
     
-    def get_token_uri(self, contract_address: str, token_id: int) -> Optional[str]:
+    async def _ensure_connection(self):
+        """Ensure Web3 connection is initialized"""
+        if self._connection_initialized:
+            return
+        
+        if self.rpc_url:
+            # Use provided RPC URL
+            self.w3 = Web3(Web3.HTTPProvider(self.rpc_url))
+        else:
+            # Get working Web3 connection for the chain
+            self.w3 = await self.chain_provider.get_web3_connection(self.chain_id)
+            if not self.w3:
+                raise ValueError(f"No working RPC found for chain ID {self.chain_id}")
+        
+        self._connection_initialized = True
+    
+    async def set_chain(self, chain_id: int):
+        """Switch to a different blockchain"""
+        self.chain_id = chain_id
+        self._connection_initialized = False
+        await self._ensure_connection()
+    
+    async def get_token_uri(self, contract_address: str, token_id: int) -> Optional[str]:
         try:
+            await self._ensure_connection()
             contract_address = Web3.to_checksum_address(contract_address)
             contract = self.w3.eth.contract(address=contract_address, abi=ERC721_ABI)
             
@@ -46,7 +75,7 @@ class NFTInspector:
             return None
     
     async def inspect_token(self, contract_address: str, token_id: int) -> TokenInfo:
-        token_uri = self.get_token_uri(contract_address, token_id)
+        token_uri = await self.get_token_uri(contract_address, token_id)
         metadata = None
         data_report = None
         
@@ -63,3 +92,11 @@ class NFTInspector:
             metadata=metadata,
             data_report=data_report
         )
+    
+    def get_current_chain_info(self):
+        """Get information about the currently selected chain"""
+        return self.chain_provider.get_chain_info(self.chain_id)
+    
+    def get_current_rpc_url(self) -> Optional[str]:
+        """Get the currently used RPC URL"""
+        return self.w3.provider.endpoint_uri

@@ -11,14 +11,14 @@ async def _inspect_async(
     contract_address: str,
     token_id: int,
     rpc_url: Optional[str],
-    output: str,
+    chain_id: int,
     analyze_media: bool,
 ):
     """Async implementation of inspect"""
-    inspector = NFTInspector(rpc_url=rpc_url, analyze_media=analyze_media)
+    inspector = NFTInspector(rpc_url=rpc_url, chain_id=chain_id, analyze_media=analyze_media)
     
     token_info = await inspector.inspect_token(contract_address, token_id)
-    
+
     return token_info
 
 
@@ -27,11 +27,12 @@ def inspect(
     contract_address: str,
     token_id: int,
     rpc_url: Optional[str] = typer.Option(None, help="Ethereum RPC URL"),
+    chain_id: int = typer.Option(1, help="Chain ID (default: 1 for Ethereum mainnet)"),
     output: str = typer.Option("pretty", help="Output format", rich_help_panel="Output"),
     analyze_media: bool = typer.Option(True, help="Analyze media URLs"),
 ):
     """Inspect an NFT and fetch its metadata"""
-    token_info = asyncio.run(_inspect_async(contract_address, token_id, rpc_url, output, analyze_media))
+    token_info = asyncio.run(_inspect_async(contract_address, token_id, rpc_url, chain_id, analyze_media))
     
     if output == "json":
         typer.echo(token_info.model_dump_json(indent=2))
@@ -70,7 +71,6 @@ def inspect(
             show_media_info("Animation", token_info.data_report.animation_url)
             show_media_info("External URL", token_info.data_report.external_url)
             show_media_info("Image Data", token_info.data_report.image_data)
-            
 
 
 if __name__ == "__main__":
