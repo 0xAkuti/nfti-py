@@ -69,19 +69,16 @@ class NFTInspector:
         contract = self.w3.eth.contract(address=contract_address, abi=NFT_ABI)
         
         result = await self.w3.async_call_contract_function(
-            contract.functions.tokenURI(token_id),
-            context=f"tokenURI for contract {contract_address} token {token_id}"
+            contract.functions.tokenURI(token_id)
         )
         return result
     
     async def get_contract_uri(self, contract_address: str) -> RpcResult[str]:
         await self._ensure_connection()
-        contract_address = self.w3.to_checksum_address(contract_address)
         contract = self.w3.eth.contract(address=contract_address, abi=NFT_ABI)
         
         result = await self.w3.async_call_contract_function(
-            contract.functions.contractURI(),
-            context=f"contractURI for contract {contract_address}"
+            contract.functions.contractURI()
         )
         return result
     
@@ -94,6 +91,16 @@ class NFTInspector:
             print(f"Error fetching metadata: {e}")
             return None
     
+    async def fetch_token_and_contract_uri(self, contract_address: str, token_id: int) -> list[RpcResult[str]]:
+        await self._ensure_connection()
+        contract_address = self.w3.to_checksum_address(contract_address)
+        return await self.w3.async_batch_call_contract_functions(
+            [
+                self.w3.eth.contract(address=contract_address, abi=NFT_ABI).functions.tokenURI(token_id),
+                self.w3.eth.contract(address=contract_address, abi=NFT_ABI).functions.contractURI()
+            ]
+        )
+
     async def fetch_contract_metadata(self, contract_uri: str) -> Optional[ContractURI]:
         try:
             metadata_json = await self.uri_resolver.resolve(contract_uri)
@@ -104,8 +111,8 @@ class NFTInspector:
             return None
     
     async def inspect_token(self, contract_address: str, token_id: int) -> TokenInfo:
-        token_uri_result = await self.get_token_uri(contract_address, token_id)
-        contract_uri_result = await self.get_contract_uri(contract_address)
+        batch_results = await self.fetch_token_and_contract_uri(contract_address, token_id)
+        token_uri_result, contract_uri_result = batch_results
         metadata = None
         contract_metadata = None
         data_report = None
