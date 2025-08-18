@@ -1,5 +1,5 @@
 import asyncio
-from typing import List, Dict, Any, Optional, Callable, Union
+from typing import List, Any, Optional
 from web3 import Web3
 from web3.contract.contract import ContractFunction
 from web3.exceptions import (
@@ -17,7 +17,7 @@ class EnhancedWeb3:
     def __init__(self, web3_instance: Web3):
         self.w3 = web3_instance
     
-    def _handle_exception(self, e: Exception, context: str = "") -> tuple[RpcErrorType, str, Optional[dict]]:
+    def _handle_exception(self, e: Exception) -> tuple[RpcErrorType, str, Optional[dict]]:
         """Categorize exceptions and extract error details"""
         error_data = None
         
@@ -55,8 +55,7 @@ class EnhancedWeb3:
         elif isinstance(e, Web3RPCError):
             error_msg = str(e)            
             # Check if it indicates contract not found
-            if "no code at address" in error_msg.lower() or \
-               "execution reverted" in error_msg.lower() and "contract" in context.lower():
+            if "no code at address" in error_msg.lower():
                 return RpcErrorType.CONTRACT_NOT_FOUND, f"Contract not found: {error_msg}", None
             else:
                 return RpcErrorType.RPC_ERROR, f"RPC error: {error_msg}", None
@@ -82,8 +81,7 @@ class EnhancedWeb3:
     
     def call_contract_function(
         self, 
-        contract_function: ContractFunction,
-        context: str = ""
+        contract_function: ContractFunction
     ) -> RpcResult[Any]:
         """Call a contract function with structured error handling"""
         try:
@@ -91,12 +89,12 @@ class EnhancedWeb3:
             return RpcResult.success_result(result)
             
         except Exception as e:
-            error_type, error_message, error_data = self._handle_exception(e, context)
+            error_type, error_message, error_data = self._handle_exception(e)
             return RpcResult.error_result(error_type, error_message, error_data)
     
     def batch_call_contract_functions(
         self, 
-        contract_functions: List[tuple[ContractFunction, str]]
+        contract_functions: List[ContractFunction]
     ) -> List[RpcResult[Any]]:
         """Batch call contract functions with individual error handling"""
         results = []
@@ -104,16 +102,14 @@ class EnhancedWeb3:
         try:
             with self.w3.batch_requests() as batch:
                 # Add all function calls to batch
-                for contract_function, context in contract_functions:
-                    batch.add(contract_function.call)
+                for contract_function in contract_functions:
+                    batch.add(contract_function)
                 
                 # Execute batch and get responses
                 responses = batch.execute()
                 
                 # Process each response
-                for i, response in enumerate(responses):
-                    context = contract_functions[i][1] if i < len(contract_functions) else ""
-                    
+                for response in responses:
                     # Check if response is an error
                     if isinstance(response, dict) and 'error' in response:
                         # Handle JSON-RPC error response
@@ -141,7 +137,7 @@ class EnhancedWeb3:
                         
         except Exception as e:
             # If the entire batch fails, return error for all requests
-            error_type, error_message, error_data = self._handle_exception(e, "batch_call")
+            error_type, error_message, error_data = self._handle_exception(e)
             error_result = RpcResult.error_result(error_type, error_message, error_data)
             results = [error_result] * len(contract_functions)
         
@@ -149,8 +145,7 @@ class EnhancedWeb3:
     
     async def async_call_contract_function(
         self, 
-        contract_function: ContractFunction,
-        context: str = ""
+        contract_function: ContractFunction
     ) -> RpcResult[Any]:
         """Async version of call_contract_function"""
         try:
@@ -161,59 +156,24 @@ class EnhancedWeb3:
             return RpcResult.success_result(result)
             
         except Exception as e:
-            error_type, error_message, error_data = self._handle_exception(e, context)
+            error_type, error_message, error_data = self._handle_exception(e)
             return RpcResult.error_result(error_type, error_message, error_data)
     
     async def async_batch_call_contract_functions(
         self, 
-        contract_functions: List[tuple[ContractFunction, str]]
+        contract_functions: List[ContractFunction]
     ) -> List[RpcResult[Any]]:
-        """Async version of batch_call_contract_functions"""
+        """Async version of batch_call_contract_functions using asyncio.gather for better performance"""
         try:
-            # Check if provider supports async batch requests
-            if hasattr(self.w3, 'batch_requests') and hasattr(self.w3.batch_requests(), 'async_execute'):
-                with self.w3.batch_requests() as batch:
-                    for contract_function, context in contract_functions:
-                        batch.add(contract_function.call)
-                    
-                    responses = await batch.async_execute()
-                    
-                    results = []
-                    for i, response in enumerate(responses):
-                        context = contract_functions[i][1] if i < len(contract_functions) else ""
-                        
-                        if isinstance(response, dict) and 'error' in response:
-                            error_info = response['error']
-                            error_message = error_info.get('message', 'Unknown RPC error')
-                            error_code = error_info.get('code', None)
-                            
-                            if error_code == -32000:
-                                if "no code at address" in error_message.lower():
-                                    error_type = RpcErrorType.CONTRACT_NOT_FOUND
-                                else:
-                                    error_type = RpcErrorType.EXECUTION_REVERTED
-                            else:
-                                error_type = RpcErrorType.RPC_ERROR
-                            
-                            results.append(RpcResult.error_result(
-                                error_type, 
-                                error_message, 
-                                {'error_code': error_code, 'rpc_error': error_info}
-                            ))
-                        else:
-                            results.append(RpcResult.success_result(response))
-                    
-                    return results
-            else:
-                # Fallback to individual async calls with gather
-                tasks = [
-                    self.async_call_contract_function(contract_function, context)
-                    for contract_function, context in contract_functions
-                ]
-                return await asyncio.gather(*tasks)
+            # Use individual async calls with gather (recommended by web3.py docs for performance)
+            tasks = [
+                self.async_call_contract_function(contract_function)
+                for contract_function in contract_functions
+            ]
+            return await asyncio.gather(*tasks)
                 
         except Exception as e:
-            error_type, error_message, error_data = self._handle_exception(e, "async_batch_call")
+            error_type, error_message, error_data = self._handle_exception(e)
             error_result = RpcResult.error_result(error_type, error_message, error_data)
             return [error_result] * len(contract_functions)
     
