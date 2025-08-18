@@ -10,20 +10,20 @@ class NFTAttribute(BaseModel):
     max_value: Optional[int | float] = None # only if value is a number
 
 
-class SvgExternalResource(BaseModel):
-    """Represents an external resource found in an SVG"""
+class ExternalResource(BaseModel):
+    """Represents an external resource found in SVG or HTML content"""
     url: WeakTokenURI
-    element_type: str  # e.g., "image", "use", "script", "style"
-    attribute: str     # e.g., "href", "xlink:href", "src"
+    element_type: str  # e.g., "image", "use", "script", "style", "img", "iframe"
+    attribute: str     # e.g., "href", "xlink:href", "src", "data"
     url_info: 'UrlInfo'
 
 
-class SvgDependencyReport(BaseModel):
-    """Analysis report for SVG external dependencies"""
+class DependencyReport(BaseModel):
+    """Analysis report for external dependencies in SVG or HTML content"""
     is_fully_onchain: bool
     min_protocol_score: int
     min_protocol: Optional[MediaProtocol] = None
-    external_resources: List[SvgExternalResource] = Field(default_factory=list)
+    external_resources: List[ExternalResource] = Field(default_factory=list)
     total_dependencies: int = 0
 
 
@@ -36,7 +36,7 @@ class UrlInfo(BaseModel):
     accessible: bool = True
     encoding: Optional[DataEncoding] = None
     error: Optional[str] = None
-    svg_dependencies: Optional[SvgDependencyReport] = None
+    external_dependencies: Optional[DependencyReport] = None
 
 
 class TokenDataReport(BaseModel):

@@ -1,6 +1,6 @@
 import re
-from typing import List, Optional, Set
-from urllib.parse import urljoin, urlparse
+from typing import List
+from urllib.parse import urlparse
 
 try:
     from bs4 import BeautifulSoup
@@ -12,22 +12,22 @@ from .models import ExternalResource, DependencyReport, UrlInfo
 from .types import MediaProtocol
 
 
-class SvgAnalyzer:
-    """Analyzes SVG content for external dependencies"""
+class HtmlAnalyzer:
+    """Analyzes HTML content for external dependencies"""
     
     def __init__(self):
         if not BS4_AVAILABLE:
             raise ImportError(
-                "beautifulsoup4 and lxml are required for SVG analysis. "
-                "Install with: pip install beautifulsoup4 lxml"
+                "beautifulsoup4 is required for HTML analysis. "
+                "Install with: pip install beautifulsoup4"
             )
     
-    async def analyze_svg_content(self, svg_content: str, url_analyzer) -> DependencyReport:
+    async def analyze_html_content(self, html_content: str, url_analyzer) -> DependencyReport:
         """
-        Analyze SVG content for external dependencies
+        Analyze HTML content for external dependencies
         
         Args:
-            svg_content: The SVG content as a string
+            html_content: The HTML content as a string
             url_analyzer: UrlAnalyzer instance for analyzing found URLs
             
         Returns:
@@ -36,7 +36,7 @@ class SvgAnalyzer:
         external_resources = []
         
         try:
-            soup = self._parse_svg_content(svg_content)
+            soup = self._parse_html_content(html_content)
             urls = self._extract_external_urls(soup)
             
             # Analyze each found URL
@@ -67,7 +67,7 @@ class SvgAnalyzer:
                     external_resources.append(external_resource)
         
         except Exception as e:
-            # If SVG parsing fails, return a basic report
+            # If HTML parsing fails, return a basic report
             return DependencyReport(
                 is_fully_onchain=False,
                 min_protocol_score=0,
@@ -78,33 +78,40 @@ class SvgAnalyzer:
         
         return self._calculate_dependency_score(external_resources)
     
-    def _parse_svg_content(self, svg_content: str) -> BeautifulSoup:
-        """Parse SVG content using BeautifulSoup with XML parser"""
-        return BeautifulSoup(svg_content, features="xml")
+    def _parse_html_content(self, html_content: str) -> BeautifulSoup:
+        """Parse HTML content using BeautifulSoup with HTML parser"""
+        return BeautifulSoup(html_content, features="html.parser")
     
     def _extract_external_urls(self, soup: BeautifulSoup) -> List[tuple[str, str, str]]:
         """
-        Extract all external URLs from SVG content
+        Extract all external URLs from HTML content
         
         Returns:
             List of tuples: (url, element_type, attribute)
         """
         urls = []
         
-        # Extract from href and xlink:href attributes
-        for attr in ['href', 'xlink:href']:
-            elements = soup.find_all(attrs={attr: True})
-            for element in elements:
-                url = element.get(attr)
-                if self._is_external_url(url):
-                    urls.append((url, element.name, attr))
+        # Define HTML elements and their URL attributes
+        url_attributes = {
+            'img': ['src'],
+            'script': ['src'],
+            'link': ['href'],
+            'iframe': ['src'],
+            'embed': ['src'],
+            'object': ['data'],
+            'video': ['src', 'poster'],
+            'audio': ['src'],
+            'source': ['src'],
+        }
         
-        # Extract from src attributes (for script elements)
-        src_elements = soup.find_all(attrs={'src': True})
-        for element in src_elements:
-            url = element.get('src')
-            if self._is_external_url(url):
-                urls.append((url, element.name, 'src'))
+        # Extract URLs from elements with URL attributes
+        for element_name, attributes in url_attributes.items():
+            elements = soup.find_all(element_name)
+            for element in elements:
+                for attr in attributes:
+                    url = element.get(attr)
+                    if url and self._is_external_url(url):
+                        urls.append((url, element_name, attr))
         
         # Extract URLs from CSS content in style elements and attributes
         css_urls = self._extract_css_urls(soup)
@@ -177,6 +184,10 @@ class SvgAnalyzer:
         
         # Skip empty URLs
         if not url:
+            return False
+        
+        # Skip javascript: and mailto: URLs
+        if url.startswith(('javascript:', 'mailto:')):
             return False
         
         # Parse URL to check if it has a scheme

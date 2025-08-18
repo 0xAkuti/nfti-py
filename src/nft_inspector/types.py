@@ -69,8 +69,8 @@ class MediaProtocol(str, Enum):
         return {
             MediaProtocol.DATA_URI: 10,
             MediaProtocol.ARWEAVE: 8,
-            MediaProtocol.IPNS: 6,
-            MediaProtocol.IPFS: 4,
+            MediaProtocol.IPFS: 6,
+            MediaProtocol.IPNS: 4,
             MediaProtocol.HTTPS: 2,
             MediaProtocol.HTTP: 1,
             MediaProtocol.NONE: 0,

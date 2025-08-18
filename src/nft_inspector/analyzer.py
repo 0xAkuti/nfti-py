@@ -8,6 +8,7 @@ from .models import UrlInfo, TokenDataReport, ContractDataReport, NFTMetadata, C
 from .types import MediaProtocol
 from .data_uri_utils import DataURIParser
 from .svg_analyzer import SvgAnalyzer
+from .html_analyzer import HtmlAnalyzer
 
 def is_valid_json(json_string):
     try:
@@ -20,6 +21,7 @@ class UrlAnalyzer:
     def __init__(self, timeout: float = 10.0):
         self.timeout = timeout
         self.svg_analyzer = None  # Lazy initialization to handle optional dependency
+        self.html_analyzer = None  # Lazy initialization to handle optional dependency
     
     def _extract_protocol(self, url: str) -> MediaProtocol:
         """Extract protocol from URL"""
@@ -67,6 +69,8 @@ class UrlAnalyzer:
         # try to guess mime type from plain text
         if '<svg' in url:
             mime_type = 'image/svg+xml'
+        elif '<html' in url.lower() or '<!doctype html' in url.lower():
+            mime_type = 'text/html'
         elif is_valid_json(url):
             mime_type = 'application/json'
         else:
@@ -145,9 +149,13 @@ class UrlAnalyzer:
         else:
             url_info = await self._analyze_http_url(url, protocol)
         
-        # Check if this is an SVG and analyze its dependencies
-        if url_info.mime_type and 'svg' in url_info.mime_type.lower():
-            url_info.svg_dependencies = await self._analyze_svg_dependencies(url, url_info)
+        # Check if this is an SVG or HTML and analyze its dependencies
+        if url_info.mime_type:
+            mime_type_lower = url_info.mime_type.lower()
+            if 'svg' in mime_type_lower:
+                url_info.external_dependencies = await self._analyze_svg_dependencies(url, url_info)
+            elif 'html' in mime_type_lower:
+                url_info.external_dependencies = await self._analyze_html_dependencies(url, url_info)
         
         return url_info
     
@@ -201,6 +209,57 @@ class UrlAnalyzer:
                     
         except Exception as e:
             print(f"Failed to get SVG content for {url}: {e}")
+            return None
+    
+    async def _analyze_html_dependencies(self, url: str, url_info: UrlInfo):
+        """Analyze HTML content for external dependencies"""
+        try:
+            # Lazy initialize HTML analyzer
+            if self.html_analyzer is None:
+                self.html_analyzer = HtmlAnalyzer()
+            
+            # Get HTML content
+            html_content = await self._get_html_content(url, url_info)
+            if not html_content:
+                return None
+            
+            # Analyze dependencies
+            return await self.html_analyzer.analyze_html_content(html_content, self)
+            
+        except Exception as e:
+            # If HTML analysis fails, return None (no dependency info)
+            print(f"HTML analysis failed for {url}: {e}")
+            return None
+    
+    async def _get_html_content(self, url: str, url_info: UrlInfo) -> Optional[str]:
+        """Get HTML content from URL or data URI"""
+        try:
+            protocol = url_info.protocol
+            
+            if protocol == MediaProtocol.DATA_URI:
+                # Extract content from data URI
+                data_info = DataURIParser.parse(url)
+                return data_info.decoded_data.decode('utf-8') if isinstance(data_info.decoded_data, bytes) else data_info.decoded_data
+            
+            elif protocol == MediaProtocol.NONE:
+                # Direct HTML content
+                return url
+            
+            else:
+                # Fetch HTML content from HTTP/IPFS/Arweave
+                analysis_url = url
+                if protocol == MediaProtocol.IPFS:
+                    analysis_url = url.replace("ipfs://", "https://ipfs.io/ipfs/")
+                elif protocol == MediaProtocol.ARWEAVE:
+                    analysis_url = url.replace("ar://", "https://arweave.net/")
+                
+                async with httpx.AsyncClient(timeout=self.timeout) as client:
+                    response = await client.get(analysis_url)
+                    response.raise_for_status()
+                    return response.text
+                    
+        except Exception as e:
+            print(f"Failed to get HTML content for {url}: {e}")
             return None
     
     async def analyze(self, token_uri: str, metadata: NFTMetadata) -> TokenDataReport:
