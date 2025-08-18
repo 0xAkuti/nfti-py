@@ -1,5 +1,4 @@
 import httpx
-import urllib.parse
 import json
 from typing import Optional
 from urllib.parse import urlparse
@@ -9,6 +8,7 @@ from .types import MediaProtocol
 from .data_uri_utils import DataURIParser
 from .svg_analyzer import SvgAnalyzer
 from .html_analyzer import HtmlAnalyzer
+from .uri_parsers import URIResolver
 
 def is_valid_json(json_string):
     try:
@@ -18,8 +18,9 @@ def is_valid_json(json_string):
         return False
 
 class UrlAnalyzer:
-    def __init__(self, timeout: float = 10.0):
+    def __init__(self, timeout: float = 10.0, uri_resolver: Optional[URIResolver] = None):
         self.timeout = timeout
+        self.uri_resolver = uri_resolver or URIResolver()
         self.svg_analyzer = None  # Lazy initialization to handle optional dependency
         self.html_analyzer = None  # Lazy initialization to handle optional dependency
     
@@ -167,7 +168,7 @@ class UrlAnalyzer:
                 self.svg_analyzer = SvgAnalyzer()
             
             # Get SVG content
-            svg_content = await self._get_svg_content(url, url_info)
+            svg_content = await self._get_content(url, url_info)
             if not svg_content:
                 return None
             
@@ -179,36 +180,20 @@ class UrlAnalyzer:
             print(f"SVG analysis failed for {url}: {e}")
             return None
     
-    async def _get_svg_content(self, url: str, url_info: UrlInfo) -> Optional[str]:
-        """Get SVG content from URL or data URI"""
+    async def _get_content(self, url: str, url_info: UrlInfo) -> Optional[str]:
+        """Get content from URL using the URI resolver"""
         try:
             protocol = url_info.protocol
             
-            if protocol == MediaProtocol.DATA_URI:
-                # Extract content from data URI
-                data_info = DataURIParser.parse(url)
-                return data_info.decoded_data.decode('utf-8') if isinstance(data_info.decoded_data, bytes) else data_info.decoded_data
-            
-            elif protocol == MediaProtocol.NONE:
-                # Direct SVG content
+            if protocol == MediaProtocol.NONE:
+                # Direct content (plain text/SVG/HTML)
                 return url
-            
             else:
-                # Fetch SVG content from HTTP/IPFS/Arweave
-                # TODO can be simplified since we also fetch media in other functions
-                analysis_url = url
-                if protocol == MediaProtocol.IPFS:
-                    analysis_url = url.replace("ipfs://", "https://ipfs.io/ipfs/")
-                elif protocol == MediaProtocol.ARWEAVE:
-                    analysis_url = url.replace("ar://", "https://arweave.net/")
-                
-                async with httpx.AsyncClient(timeout=self.timeout) as client:
-                    response = await client.get(analysis_url)
-                    response.raise_for_status()
-                    return response.text
+                # Use URI resolver for all other schemes
+                return await self.uri_resolver.resolve(url)
                     
         except Exception as e:
-            print(f"Failed to get SVG content for {url}: {e}")
+            print(f"Failed to get content for {url}: {e}")
             return None
     
     async def _analyze_html_dependencies(self, url: str, url_info: UrlInfo):
@@ -219,7 +204,7 @@ class UrlAnalyzer:
                 self.html_analyzer = HtmlAnalyzer()
             
             # Get HTML content
-            html_content = await self._get_html_content(url, url_info)
+            html_content = await self._get_content(url, url_info)
             if not html_content:
                 return None
             
@@ -231,36 +216,6 @@ class UrlAnalyzer:
             print(f"HTML analysis failed for {url}: {e}")
             return None
     
-    async def _get_html_content(self, url: str, url_info: UrlInfo) -> Optional[str]:
-        """Get HTML content from URL or data URI"""
-        try:
-            protocol = url_info.protocol
-            
-            if protocol == MediaProtocol.DATA_URI:
-                # Extract content from data URI
-                data_info = DataURIParser.parse(url)
-                return data_info.decoded_data.decode('utf-8') if isinstance(data_info.decoded_data, bytes) else data_info.decoded_data
-            
-            elif protocol == MediaProtocol.NONE:
-                # Direct HTML content
-                return url
-            
-            else:
-                # Fetch HTML content from HTTP/IPFS/Arweave
-                analysis_url = url
-                if protocol == MediaProtocol.IPFS:
-                    analysis_url = url.replace("ipfs://", "https://ipfs.io/ipfs/")
-                elif protocol == MediaProtocol.ARWEAVE:
-                    analysis_url = url.replace("ar://", "https://arweave.net/")
-                
-                async with httpx.AsyncClient(timeout=self.timeout) as client:
-                    response = await client.get(analysis_url)
-                    response.raise_for_status()
-                    return response.text
-                    
-        except Exception as e:
-            print(f"Failed to get HTML content for {url}: {e}")
-            return None
     
     async def analyze(self, token_uri: str, metadata: NFTMetadata) -> TokenDataReport:
         """Analyze all media URLs in metadata"""

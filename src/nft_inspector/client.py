@@ -84,7 +84,7 @@ class NFTInspector:
     
     async def fetch_metadata(self, token_uri: str) -> Optional[NFTMetadata]:
         try:
-            metadata_json = await self.uri_resolver.resolve(token_uri)
+            metadata_json = await self.uri_resolver.resolve_json(token_uri)
             return NFTMetadata.model_validate(metadata_json)
             
         except Exception as e:
@@ -103,7 +103,7 @@ class NFTInspector:
 
     async def fetch_contract_metadata(self, contract_uri: str) -> Optional[ContractURI]:
         try:
-            metadata_json = await self.uri_resolver.resolve(contract_uri)
+            metadata_json = await self.uri_resolver.resolve_json(contract_uri)
             return ContractURI.model_validate(metadata_json)
             
         except Exception as e:

@@ -1,5 +1,4 @@
 from abc import ABC, abstractmethod
-from typing import Dict, Any
 
 
 class URIParser(ABC):
@@ -9,6 +8,6 @@ class URIParser(ABC):
         pass
     
     @abstractmethod
-    async def parse(self, uri: str) -> Dict[str, Any]:
-        """Parse the URI and return metadata as a dictionary"""
+    async def parse(self, uri: str) -> str:
+        """Parse the URI and return raw content as a string"""
         pass
