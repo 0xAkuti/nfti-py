@@ -85,6 +85,13 @@ class DataEncoding(str, Enum):
     PLAIN = "plain"
 
 
+class NFTStandard(str, Enum):
+    """Enum for NFT standards"""
+    ERC721 = "ERC-721"
+    ERC1155 = "ERC-1155"
+    UNKNOWN = "unknown"
+
+
 class RpcErrorType(str, Enum):
     """Enum for RPC error types"""
     SUCCESS = "success"

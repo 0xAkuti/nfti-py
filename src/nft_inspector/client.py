@@ -6,7 +6,8 @@ from .uri_parsers import URIResolver
 from .analyzer import UrlAnalyzer
 from .chains import ChainProvider
 from .chains.web3_wrapper import EnhancedWeb3
-from .types import RpcResult
+from .types import RpcResult, NFTStandard
+from .interface_detector import InterfaceDetector
 
 
 NFT_ABI = [
@@ -25,8 +26,43 @@ NFT_ABI = [
         "outputs": [{"internalType": "string", "name": "", "type": "string"}],
         "stateMutability": "view",
         "type": "function"
+    },
+    # uri(uint256 tokenId), ERC1155
+    {
+        "inputs": [{"internalType": "uint256", "name": "tokenId", "type": "uint256"}],
+        "name": "uri",
+        "outputs": [{"internalType": "string", "name": "", "type": "string"}],
+        "stateMutability": "view",
+        "type": "function"
     }
 ]
+
+
+def substitute_erc1155_id(uri: str, token_id: int) -> str:
+    """
+    Substitute {id} placeholder in ERC-1155 URI with actual token ID.
+    
+    According to ERC-1155 spec, the {id} should be replaced with the actual 
+    token ID in hexadecimal form (lowercase, without 0x prefix).
+    
+    Args:
+        uri: The URI template potentially containing {id} or {ID}
+        token_id: The token ID to substitute
+        
+    Returns:
+        URI with {id} replaced by hex token ID
+    """
+    if '{id}' not in uri and '{ID}' not in uri:
+        return uri
+    
+    # Convert token ID to lowercase hex without 0x prefix
+    hex_id = format(token_id, '064x')  # 64-character hex string (32 bytes)
+    
+    # Replace both {id} and {ID} variants
+    uri = uri.replace('{id}', hex_id)
+    uri = uri.replace('{ID}', hex_id)
+    
+    return uri
 
 
 class NFTInspector:
@@ -37,6 +73,7 @@ class NFTInspector:
         self.w3: Optional[EnhancedWeb3] = None
         self.uri_resolver = URIResolver()
         self.url_analyzer = UrlAnalyzer()
+        self.interface_detector = InterfaceDetector(self.w3)
         
         # Initialize Web3 connection (will be set up lazily in _ensure_connection)
         self._connection_initialized = False
@@ -62,17 +99,7 @@ class NFTInspector:
         self.chain_id = chain_id
         self._connection_initialized = False
         await self._ensure_connection()
-    
-    async def get_token_uri(self, contract_address: str, token_id: int) -> RpcResult[str]:
-        await self._ensure_connection()
-        contract_address = self.w3.to_checksum_address(contract_address)
-        contract = self.w3.eth.contract(address=contract_address, abi=NFT_ABI)
-        
-        result = await self.w3.async_call_contract_function(
-            contract.functions.tokenURI(token_id)
-        )
-        return result
-    
+
     async def get_contract_uri(self, contract_address: str) -> RpcResult[str]:
         await self._ensure_connection()
         contract = self.w3.eth.contract(address=contract_address, abi=NFT_ABI)
@@ -94,12 +121,22 @@ class NFTInspector:
     async def fetch_token_and_contract_uri(self, contract_address: str, token_id: int) -> list[RpcResult[str]]:
         await self._ensure_connection()
         contract_address = self.w3.to_checksum_address(contract_address)
-        return await self.w3.async_batch_call_contract_functions(
+
+        nft_standard = await self.interface_detector.detect_nft_standard(contract_address)
+
+        contract = self.w3.eth.contract(address=contract_address, abi=NFT_ABI)
+        results = await self.w3.async_batch_call_contract_functions(
             [
-                self.w3.eth.contract(address=contract_address, abi=NFT_ABI).functions.tokenURI(token_id),
-                self.w3.eth.contract(address=contract_address, abi=NFT_ABI).functions.contractURI()
+                contract.functions.uri(token_id) if nft_standard == NFTStandard.ERC1155 else contract.functions.tokenURI(token_id),
+                contract.functions.contractURI()
             ]
         )
+        if nft_standard == NFTStandard.ERC1155 and results[0].success and results[0].result:
+            results[0].result = substitute_erc1155_id(results[0].result, token_id)
+
+        # TODO: handle if interface detection fails
+
+        return results
 
     async def fetch_contract_metadata(self, contract_uri: str) -> Optional[ContractURI]:
         try:
