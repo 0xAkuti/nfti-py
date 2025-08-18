@@ -64,6 +64,19 @@ class MediaProtocol(str, Enum):
     NONE = "none"
     UNKNOWN = "unknown"
 
+    def get_score(self) -> int:
+        """Get a score for the media protocol"""
+        return {
+            MediaProtocol.DATA_URI: 10,
+            MediaProtocol.ARWEAVE: 8,
+            MediaProtocol.IPNS: 6,
+            MediaProtocol.IPFS: 4,
+            MediaProtocol.HTTPS: 2,
+            MediaProtocol.HTTP: 1,
+            MediaProtocol.NONE: 0,
+            MediaProtocol.UNKNOWN: 0
+        }[self]
+
 
 class DataEncoding(str, Enum):
     """Enum for data URI encoding types"""

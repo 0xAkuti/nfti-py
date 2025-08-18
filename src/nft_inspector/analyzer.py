@@ -1,11 +1,13 @@
 import httpx
 import urllib.parse
 import json
+from typing import Optional
 from urllib.parse import urlparse
 
 from .models import UrlInfo, TokenDataReport, ContractDataReport, NFTMetadata, ContractURI
 from .types import MediaProtocol
 from .data_uri_utils import DataURIParser
+from .svg_analyzer import SvgAnalyzer
 
 def is_valid_json(json_string):
     try:
@@ -17,6 +19,7 @@ def is_valid_json(json_string):
 class UrlAnalyzer:
     def __init__(self, timeout: float = 10.0):
         self.timeout = timeout
+        self.svg_analyzer = None  # Lazy initialization to handle optional dependency
     
     def _extract_protocol(self, url: str) -> MediaProtocol:
         """Extract protocol from URL"""
@@ -136,11 +139,69 @@ class UrlAnalyzer:
 
         
         if protocol == MediaProtocol.DATA_URI:
-            return self._analyze_data_uri(url)
+            url_info = self._analyze_data_uri(url)
         elif protocol == MediaProtocol.NONE:
-            return self._analyze_plain_data(url)
+            url_info = self._analyze_plain_data(url)
         else:
-            return await self._analyze_http_url(url, protocol)
+            url_info = await self._analyze_http_url(url, protocol)
+        
+        # Check if this is an SVG and analyze its dependencies
+        if url_info.mime_type and 'svg' in url_info.mime_type.lower():
+            url_info.svg_dependencies = await self._analyze_svg_dependencies(url, url_info)
+        
+        return url_info
+    
+    async def _analyze_svg_dependencies(self, url: str, url_info: UrlInfo):
+        """Analyze SVG content for external dependencies"""
+        try:
+            # Lazy initialize SVG analyzer
+            if self.svg_analyzer is None:
+                self.svg_analyzer = SvgAnalyzer()
+            
+            # Get SVG content
+            svg_content = await self._get_svg_content(url, url_info)
+            if not svg_content:
+                return None
+            
+            # Analyze dependencies
+            return await self.svg_analyzer.analyze_svg_content(svg_content, self)
+            
+        except Exception as e:
+            # If SVG analysis fails, return None (no dependency info)
+            print(f"SVG analysis failed for {url}: {e}")
+            return None
+    
+    async def _get_svg_content(self, url: str, url_info: UrlInfo) -> Optional[str]:
+        """Get SVG content from URL or data URI"""
+        try:
+            protocol = url_info.protocol
+            
+            if protocol == MediaProtocol.DATA_URI:
+                # Extract content from data URI
+                data_info = DataURIParser.parse(url)
+                return data_info.decoded_data.decode('utf-8') if isinstance(data_info.decoded_data, bytes) else data_info.decoded_data
+            
+            elif protocol == MediaProtocol.NONE:
+                # Direct SVG content
+                return url
+            
+            else:
+                # Fetch SVG content from HTTP/IPFS/Arweave
+                # TODO can be simplified since we also fetch media in other functions
+                analysis_url = url
+                if protocol == MediaProtocol.IPFS:
+                    analysis_url = url.replace("ipfs://", "https://ipfs.io/ipfs/")
+                elif protocol == MediaProtocol.ARWEAVE:
+                    analysis_url = url.replace("ar://", "https://arweave.net/")
+                
+                async with httpx.AsyncClient(timeout=self.timeout) as client:
+                    response = await client.get(analysis_url)
+                    response.raise_for_status()
+                    return response.text
+                    
+        except Exception as e:
+            print(f"Failed to get SVG content for {url}: {e}")
+            return None
     
     async def analyze(self, token_uri: str, metadata: NFTMetadata) -> TokenDataReport:
         """Analyze all media URLs in metadata"""
