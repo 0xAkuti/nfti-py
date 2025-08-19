@@ -101,10 +101,6 @@ class AccessControlInfo(BaseModel):
     
     # Timelock info (if detected)
     timelock_delay: Optional[int] = None
-    
-    # Security flags
-    is_eoa_controlled: bool = False      # Single EOA has control
-    supports_erc173: bool = False        # Standard compliance
 
 class TokenInfo(BaseModel):
     contract_address: EthereumAddress

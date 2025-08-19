@@ -120,6 +120,7 @@ class GovernanceType(str, Enum):
     CONTRACT = "contract"                # Smart contract control
     MULTISIG = "multisig"                # Multi-signature control
     TIMELOCK = "timelock"                # Time-delayed execution
+    RENOUNCED = "renounced"              # Ownership renounced (zero address)
     UNKNOWN = "unknown"
 
 class Interface(str, Enum):

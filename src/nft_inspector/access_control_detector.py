@@ -112,11 +112,14 @@ class AccessControlDetector:
         admin_address = admin_result.result if admin_result.success else None
         has_roles = role_result.success and role_result.result
         timelock_delay = delay_result.result if delay_result.success else None
-        supports_erc173 = erc173_support.success and erc173_support.result
+        
+        # Track whether functions succeeded (important for renounced ownership detection)
+        owner_function_exists = owner_result.success
+        admin_function_exists = admin_result.success
         
         # Determine access control type from batch results
-        access_type, governance_type = self._classify_access_control(
-            owner_address, admin_address, has_roles, timelock_delay
+        access_type, governance_type = await self._classify_access_control(
+            owner_address, admin_address, has_roles, timelock_delay, owner_function_exists, admin_function_exists
         )
         
         # Determine primary control address
@@ -129,16 +132,17 @@ class AccessControlDetector:
             owner_address=EthereumAddress.validate(primary_address) if primary_address else None,
             has_roles=has_roles,
             admin_address=EthereumAddress.validate(admin_address) if admin_address and admin_address != self.ZERO_ADDRESS else None,
-            timelock_delay=timelock_delay,
-            supports_erc173=supports_erc173
+            timelock_delay=timelock_delay
         )
     
-    def _classify_access_control(
+    async def _classify_access_control(
         self, 
         owner_address: Optional[str], 
         admin_address: Optional[str], 
         has_roles: bool, 
-        timelock_delay: Optional[int]
+        timelock_delay: Optional[int],
+        owner_function_exists: bool,
+        admin_function_exists: bool
     ) -> Tuple[AccessControlType, GovernanceType]:
         """Classify access control type and governance type from batch results"""
         
@@ -147,25 +151,101 @@ class AccessControlDetector:
             return AccessControlType.TIMELOCK, GovernanceType.TIMELOCK
         
         if has_roles:
-            return AccessControlType.ROLE_BASED, self._classify_governance_from_address(admin_address or owner_address)
+            governance = await self._classify_governance_from_address(admin_address or owner_address)
+            return AccessControlType.ROLE_BASED, governance
         
-        if owner_address and owner_address != self.ZERO_ADDRESS:
-            return AccessControlType.OWNABLE, self._classify_governance_from_address(owner_address)
+        # Check for ownership patterns (including renounced)
+        if owner_function_exists:
+            if owner_address and owner_address != self.ZERO_ADDRESS:
+                # Owner function exists and returns non-zero address
+                governance = await self._classify_governance_from_address(owner_address)
+                return AccessControlType.OWNABLE, governance
+            else:
+                # Owner function exists but returns zero address (renounced ownership)
+                return AccessControlType.OWNABLE, GovernanceType.RENOUNCED
         
-        if admin_address and admin_address != self.ZERO_ADDRESS:
-            return AccessControlType.SIMPLE_OWNER, self._classify_governance_from_address(admin_address)
+        # Check for admin patterns
+        if admin_function_exists:
+            if admin_address and admin_address != self.ZERO_ADDRESS:
+                governance = await self._classify_governance_from_address(admin_address)
+                return AccessControlType.SIMPLE_OWNER, governance
+            else:
+                # Admin function exists but returns zero address
+                return AccessControlType.SIMPLE_OWNER, GovernanceType.RENOUNCED
         
+        # No access control functions found
         return AccessControlType.NONE, GovernanceType.UNKNOWN
     
-    def _classify_governance_from_address(self, address: Optional[str]) -> GovernanceType:
+    async def _classify_governance_from_address(self, address: Optional[str]) -> GovernanceType:
         """Classify governance type from address characteristics"""
         if not address or address == self.ZERO_ADDRESS:
             return GovernanceType.UNKNOWN
         
-        # This would ideally check if address is EOA vs contract
-        # For now, we'll do a simple heuristic based on the address
-        # Real implementation would check bytecode length
-        return GovernanceType.CONTRACT  # Conservative assumption
+        try:
+            # Get bytecode to determine if it's a contract or EOA
+            bytecode = await self.w3.async_get_code(address)
+            
+            if len(bytecode) <= 2:  # EOA has no bytecode (empty or just '0x')
+                return GovernanceType.EOA
+            
+            # For contracts, try specific pattern detection
+            # Keep it fast - only check high-confidence patterns
+            
+            # Quick timelock check (single function call)
+            if await self._quick_timelock_check(address):
+                return GovernanceType.TIMELOCK
+            
+            # Quick multisig check (single function call) 
+            if await self._quick_multisig_check(address):
+                return GovernanceType.MULTISIG
+            
+            # Default to generic contract
+            return GovernanceType.CONTRACT
+            
+        except Exception:
+            return GovernanceType.UNKNOWN
+    
+    async def _quick_timelock_check(self, address: str) -> bool:
+        """Quick check if address is a timelock contract (single function call)"""
+        try:
+            # Try calling getMinDelay() - TimelockController signature
+            timelock_contract = self.w3.eth.contract(
+                address=address, 
+                abi=[{
+                    "inputs": [],
+                    "name": "getMinDelay",
+                    "outputs": [{"internalType": "uint256", "name": "", "type": "uint256"}],
+                    "stateMutability": "view",
+                    "type": "function"
+                }]
+            )
+            result = await self.w3.async_call_contract_function(
+                timelock_contract.functions.getMinDelay()
+            )
+            return result.success
+        except Exception:
+            return False
+    
+    async def _quick_multisig_check(self, address: str) -> bool:
+        """Quick check if address is a multisig contract (single function call)"""
+        try:
+            # Check for Gnosis Safe getThreshold() function
+            multisig_contract = self.w3.eth.contract(
+                address=address,
+                abi=[{
+                    "inputs": [],
+                    "name": "getThreshold", 
+                    "outputs": [{"internalType": "uint256", "name": "", "type": "uint256"}],
+                    "stateMutability": "view",
+                    "type": "function"
+                }]
+            )
+            result = await self.w3.async_call_contract_function(
+                multisig_contract.functions.getThreshold()
+            )
+            return result.success
+        except Exception:
+            return False
     
     def _get_primary_control_address(self, owner_address: Optional[str], admin_address: Optional[str]) -> Optional[str]:
         """Get the primary control address from available addresses"""
@@ -175,14 +255,3 @@ class AccessControlDetector:
         if admin_address and admin_address != self.ZERO_ADDRESS:
             return admin_address
         return None
-    
-    async def _is_address_eoa(self, address: str) -> bool:
-        """Check if address is an EOA (Externally Owned Account) vs contract"""
-        try:
-            # Get bytecode to determine if it's a contract
-            bytecode = await self.w3.async_get_code(address)
-            # EOA has no bytecode (empty or just '0x')
-            return len(bytecode) <= 2
-        except Exception:
-            # If we can't determine, assume it's a contract (safer assumption)
-            return False
