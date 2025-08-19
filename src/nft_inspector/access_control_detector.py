@@ -10,6 +10,7 @@ class AccessControlDetector:
     # Interface IDs for standard detection
     ERC173_INTERFACE_ID = "0x7f5828d0"         # ERC-173 Ownership Standard
     ACCESS_CONTROL_INTERFACE_ID = "0x7965db0b"  # OpenZeppelin AccessControl
+    ACCESS_CONTROL_ENUMS_INTERFACE_ID = "0x2360c304"  # OpenZeppelin AccessControl Enums
     
     # Common constants
     ZERO_ADDRESS = "0x0000000000000000000000000000000000000000"
@@ -55,6 +56,14 @@ class AccessControlDetector:
             "outputs": [{"internalType": "uint256", "name": "", "type": "uint256"}],
             "stateMutability": "view",
             "type": "function"
+        },
+        # AccessControlEnumerable getRoleMember
+        {
+            "inputs": [{"internalType": "bytes32", "name": "role", "type": "bytes32"}, {"internalType": "uint256", "name": "index", "type": "uint256"}],
+            "name": "getRoleMember",
+            "outputs": [{"internalType": "address", "name": "", "type": "address"}],
+            "stateMutability": "view",
+            "type": "function"
         }
     ]
     
@@ -84,9 +93,13 @@ class AccessControlDetector:
         """ONE batch call to gather all essential information"""
         
         essential_calls = [
+            # Core ownership functions
             self.contract.functions.owner(),                    # Most common
             self.contract.functions.admin(),                    # Proxy admin
-            self.contract.functions.hasRole(self.ZERO_BYTES32, self.contract_address),  # Check AccessControl with DEFAULT_ADMIN_ROLE
+            
+            # ERC-165 interface detection for AccessControl
+            self.contract.functions.supportsInterface(self.ACCESS_CONTROL_INTERFACE_ID),     # Basic AccessControl
+            self.contract.functions.supportsInterface(self.ACCESS_CONTROL_ENUMS_INTERFACE_ID), # AccessControl Enumerable
         ]
         
         # Single batch call - all results in one RPC request
@@ -96,12 +109,13 @@ class AccessControlDetector:
         """Analyze all results locally - no additional RPC calls needed"""
         
         # Unpack batch results
-        owner_result, admin_result, role_result = results
+        owner_result, admin_result, access_control_result, access_control_enum_result = results
         
         # Extract addresses and values from successful results
         owner_address = owner_result.result if owner_result.success else None
         admin_address = admin_result.result if admin_result.success else None
-        has_roles = role_result.success and role_result.result
+        has_access_control = access_control_result.success and access_control_result.result
+        has_enumerable_access_control = access_control_enum_result.success and access_control_enum_result.result
         
         # Track whether functions succeeded (important for renounced ownership detection)
         owner_function_exists = owner_result.success
@@ -109,12 +123,18 @@ class AccessControlDetector:
         
         # Determine access control type from batch results  
         access_type, governance_type = await self._classify_access_control(
-            owner_address, admin_address, has_roles, owner_function_exists, admin_function_exists
+            owner_address, admin_address, has_access_control, owner_function_exists, admin_function_exists
         )
         
-        # Determine primary control address
-        primary_address = self._get_primary_control_address(owner_address, admin_address)
+        # Get role admin if AccessControl Enumerable is supported
+        role_admin_address = None
+        if has_enumerable_access_control and access_type == AccessControlType.ROLE_BASED:
+            role_admin_address = await self._get_default_admin_role_member()
         
+        # Determine primary control address (prioritize role admin for role-based systems)
+        primary_address = role_admin_address or self._get_primary_control_address(owner_address, admin_address)
+        
+        # Get timelock delay if governance is timelock
         timelock_delay = None
         if governance_type == GovernanceType.TIMELOCK and primary_address:
             timelock_delay = await self.__get_timelock_delay(primary_address)
@@ -124,8 +144,8 @@ class AccessControlDetector:
             governance_type=governance_type,
             has_owner=bool(owner_address and owner_address != self.ZERO_ADDRESS),
             owner_address=EthereumAddress.validate(primary_address) if primary_address else None,
-            has_roles=has_roles,
-            admin_address=EthereumAddress.validate(admin_address) if admin_address and admin_address != self.ZERO_ADDRESS else None,
+            has_roles=has_access_control,
+            admin_address=EthereumAddress.validate(role_admin_address or admin_address) if (role_admin_address or admin_address) and (role_admin_address or admin_address) != self.ZERO_ADDRESS else None,
             timelock_delay=timelock_delay
         )
     
@@ -133,14 +153,14 @@ class AccessControlDetector:
         self, 
         owner_address: Optional[str], 
         admin_address: Optional[str], 
-        has_roles: bool,
+        has_access_control: bool,
         owner_function_exists: bool,
         admin_function_exists: bool
     ) -> Tuple[AccessControlType, GovernanceType]:
         """Classify access control type and governance type from batch results"""
         
-        # Priority-based classification
-        if has_roles:
+        # Priority-based classification  
+        if has_access_control:
             governance = await self._classify_governance_from_address(admin_address or owner_address)
             return AccessControlType.ROLE_BASED, governance
         
@@ -195,6 +215,16 @@ class AccessControlDetector:
         except Exception:
             return GovernanceType.UNKNOWN
     
+    async def _get_default_admin_role_member(self) -> Optional[str]:
+        """Get the first member of DEFAULT_ADMIN_ROLE from AccessControlEnumerable"""
+        try:
+            result = await self.w3.async_call_contract_function(
+                self.contract.functions.getRoleMember(self.ZERO_BYTES32, 0)  # DEFAULT_ADMIN_ROLE, index 0
+            )
+            return result.result if result.success else None
+        except Exception:
+            return None
+
     async def __get_timelock_delay(self, address: str) -> Optional[int]:
         """Quick check if address is a timelock contract, returns delay if found"""
         try:
