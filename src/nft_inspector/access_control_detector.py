@@ -83,19 +83,10 @@ class AccessControlDetector:
     async def _single_batch_detection(self) -> List[RpcResult[Any]]:
         """ONE batch call to gather all essential information"""
         
-        # Essential function calls - carefully chosen for maximum info/call ratio
         essential_calls = [
-            # ERC-165 interface checks (2 calls - high value)
-            self.contract.functions.supportsInterface(self.ERC173_INTERFACE_ID),
-            self.contract.functions.supportsInterface(self.ACCESS_CONTROL_INTERFACE_ID),
-            
-            # Core ownership functions (3 calls - essential)
             self.contract.functions.owner(),                    # Most common
             self.contract.functions.admin(),                    # Proxy admin
             self.contract.functions.hasRole(self.ZERO_BYTES32, self.contract_address),  # Check AccessControl with DEFAULT_ADMIN_ROLE
-            
-            # Timelock detection (1 call - high value if present)
-            self.contract.functions.getMinDelay(),              # TimelockController
         ]
         
         # Single batch call - all results in one RPC request
@@ -105,25 +96,28 @@ class AccessControlDetector:
         """Analyze all results locally - no additional RPC calls needed"""
         
         # Unpack batch results
-        erc173_support, access_control_support, owner_result, admin_result, role_result, delay_result = results
+        owner_result, admin_result, role_result = results
         
         # Extract addresses and values from successful results
         owner_address = owner_result.result if owner_result.success else None
         admin_address = admin_result.result if admin_result.success else None
         has_roles = role_result.success and role_result.result
-        timelock_delay = delay_result.result if delay_result.success else None
         
         # Track whether functions succeeded (important for renounced ownership detection)
         owner_function_exists = owner_result.success
         admin_function_exists = admin_result.success
         
-        # Determine access control type from batch results
+        # Determine access control type from batch results  
         access_type, governance_type = await self._classify_access_control(
-            owner_address, admin_address, has_roles, timelock_delay, owner_function_exists, admin_function_exists
+            owner_address, admin_address, has_roles, owner_function_exists, admin_function_exists
         )
         
         # Determine primary control address
         primary_address = self._get_primary_control_address(owner_address, admin_address)
+        
+        timelock_delay = None
+        if governance_type == GovernanceType.TIMELOCK and primary_address:
+            timelock_delay = await self.__get_timelock_delay(primary_address)
         
         return AccessControlInfo(
             access_control_type=access_type,
@@ -139,17 +133,13 @@ class AccessControlDetector:
         self, 
         owner_address: Optional[str], 
         admin_address: Optional[str], 
-        has_roles: bool, 
-        timelock_delay: Optional[int],
+        has_roles: bool,
         owner_function_exists: bool,
         admin_function_exists: bool
     ) -> Tuple[AccessControlType, GovernanceType]:
         """Classify access control type and governance type from batch results"""
         
         # Priority-based classification
-        if timelock_delay is not None:
-            return AccessControlType.TIMELOCK, GovernanceType.TIMELOCK
-        
         if has_roles:
             governance = await self._classify_governance_from_address(admin_address or owner_address)
             return AccessControlType.ROLE_BASED, governance
@@ -192,7 +182,7 @@ class AccessControlDetector:
             # Keep it fast - only check high-confidence patterns
             
             # Quick timelock check (single function call)
-            if await self._quick_timelock_check(address):
+            if await self.__get_timelock_delay(address) is not None:
                 return GovernanceType.TIMELOCK
             
             # Quick multisig check (single function call) 
@@ -205,8 +195,8 @@ class AccessControlDetector:
         except Exception:
             return GovernanceType.UNKNOWN
     
-    async def _quick_timelock_check(self, address: str) -> bool:
-        """Quick check if address is a timelock contract (single function call)"""
+    async def __get_timelock_delay(self, address: str) -> Optional[int]:
+        """Quick check if address is a timelock contract, returns delay if found"""
         try:
             # Try calling getMinDelay() - TimelockController signature
             timelock_contract = self.w3.eth.contract(
@@ -222,9 +212,10 @@ class AccessControlDetector:
             result = await self.w3.async_call_contract_function(
                 timelock_contract.functions.getMinDelay()
             )
-            return result.success
+            return result.result if result.success else None
         except Exception:
-            return False
+            return None
+    
     
     async def _quick_multisig_check(self, address: str) -> bool:
         """Quick check if address is a multisig contract (single function call)"""
