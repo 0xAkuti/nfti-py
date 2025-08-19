@@ -91,6 +91,18 @@ class NFTStandard(str, Enum):
     ERC1155 = "ERC-1155"
     UNKNOWN = "unknown"
 
+
+class ProxyStandard(str, Enum):
+    """Enum for proxy standards"""
+    EIP_897 = "EIP-897"                    # DelegateProxy (legacy)
+    EIP_1967_TRANSPARENT = "EIP-1967-Transparent"  # Transparent Proxy
+    EIP_1822_UUPS = "EIP-1822-UUPS"       # Universal Upgradeable Proxy
+    EIP_1167_MINIMAL = "EIP-1167-Minimal" # Clone/Minimal Proxy
+    EIP_2535_DIAMOND = "EIP-2535-Diamond" # Diamond/Multi-Facet Proxy
+    BEACON_PROXY = "Beacon"               # Beacon Proxy Pattern
+    CUSTOM_PROXY = "Custom"               # Non-standard proxy
+    NOT_PROXY = "not_proxy"               # Regular contract
+
 class Interface(str, Enum):
     """Enum for ERC-165 interfaces"""
     ERC165 = "0x01ffc9a7" # ERC-165 interface

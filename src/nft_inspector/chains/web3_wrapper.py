@@ -177,6 +177,18 @@ class EnhancedWeb3:
             error_result = RpcResult.error_result(error_type, error_message, error_data)
             return [error_result] * len(contract_functions)
     
+    async def async_get_storage_at(self, address: str, slot: str) -> bytes:
+        """Async version of eth.get_storage_at"""
+        return await asyncio.get_event_loop().run_in_executor(
+            None, self.w3.eth.get_storage_at, address, slot
+        )
+    
+    async def async_get_code(self, address: str) -> bytes:
+        """Async version of eth.get_code"""
+        return await asyncio.get_event_loop().run_in_executor(
+            None, self.w3.eth.get_code, address
+        )
+    
     @property
     def eth(self):
         """Access to eth module"""

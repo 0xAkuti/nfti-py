@@ -121,5 +121,18 @@ def supported_interfaces(
     typer.echo(json.dumps(interfaces, indent=4, default=str))
 
 
+@app.command("proxy-info")
+
+def proxy_info(
+    contract_address: str,
+    rpc_url: Optional[str] = typer.Option(None, help="Ethereum RPC URL"),
+    chain_id: int = typer.Option(1, help="Chain ID (default: 1 for Ethereum mainnet)"),
+):
+    """Get proxy information for a contract"""
+    inspector = NFTInspector(rpc_url=rpc_url, chain_id=chain_id)
+    proxy_info = asyncio.run(inspector.get_proxy_info(contract_address))
+    typer.echo(json.dumps(proxy_info.model_dump(exclude_unset=True), indent=4, default=str))
+
+
 if __name__ == "__main__":
     app()

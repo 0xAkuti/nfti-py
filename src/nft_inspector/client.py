@@ -1,13 +1,14 @@
 from typing import Optional
 from web3 import Web3
 
-from .models import TokenInfo, NFTMetadata, ContractURI
+from .models import ProxyInfo, TokenInfo, NFTMetadata, ContractURI
 from .uri_parsers import URIResolver
 from .analyzer import UrlAnalyzer
 from .chains import ChainProvider
 from .chains.web3_wrapper import EnhancedWeb3
 from .types import Interface, RpcResult, NFTStandard
 from .interface_detector import InterfaceDetector
+from .proxy_detector import ProxyDetector
 
 
 NFT_ABI = [
@@ -172,6 +173,10 @@ class NFTInspector:
             if contract_metadata:
                 contract_data_report = await self.url_analyzer.analyze_contract(contract_uri, contract_metadata)
         
+        # Detect proxy information
+        proxy_detector = ProxyDetector(self.w3, contract_address)
+        proxy_info = await proxy_detector.detect_proxy_standard()
+        
         return TokenInfo(
             contract_address=contract_address,
             token_id=token_id,
@@ -180,7 +185,8 @@ class NFTInspector:
             data_report=data_report,
             contract_uri=contract_uri,
             contract_metadata=contract_metadata,
-            contract_data_report=contract_data_report
+            contract_data_report=contract_data_report,
+            proxy_info=proxy_info
         )
     
     async def inspect_contract(self, contract_address: str) -> dict:
@@ -208,6 +214,11 @@ class NFTInspector:
         await self._ensure_connection()
         return await self.interface_detector.get_supported_interfaces(contract_address)
     
+    async def get_proxy_info(self, contract_address: str) -> ProxyInfo:
+        await self._ensure_connection()
+        proxy_detector = ProxyDetector(self.w3, contract_address)
+        return await proxy_detector.detect_proxy_standard()
+
     def get_current_chain_info(self):
         """Get information about the currently selected chain"""
         return self.chain_provider.get_chain_info(self.chain_id)

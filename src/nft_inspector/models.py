@@ -1,6 +1,6 @@
 from typing import Optional, List
 from pydantic import BaseModel, Field, AliasChoices, model_validator
-from .types import TokenURI, EthereumAddress, DisplayType, MediaProtocol, DataEncoding, WeakTokenURI
+from .types import TokenURI, EthereumAddress, DisplayType, MediaProtocol, DataEncoding, WeakTokenURI, ProxyStandard
 
 
 class NFTAttribute(BaseModel):
@@ -69,6 +69,21 @@ class NFTMetadata(BaseModel):
         extra = "allow"
 
 
+class ProxyInfo(BaseModel):
+    """Information about proxy contract detection and configuration"""
+    is_proxy: bool
+    proxy_standard: ProxyStandard
+    implementation_address: Optional[EthereumAddress] = None
+    admin_address: Optional[EthereumAddress] = None
+    beacon_address: Optional[EthereumAddress] = None
+    
+    # Diamond-specific fields
+    facet_addresses: Optional[List[EthereumAddress]] = None
+    
+    # Additional metadata
+    is_upgradeable: bool = False
+
+
 class TokenInfo(BaseModel):
     contract_address: EthereumAddress
     token_id: int
@@ -78,6 +93,7 @@ class TokenInfo(BaseModel):
     contract_uri: Optional[TokenURI] = None
     contract_metadata: Optional["ContractURI"] = None
     contract_data_report: Optional[ContractDataReport] = None
+    proxy_info: Optional[ProxyInfo] = None
     
     class Config:
         extra = "allow"
