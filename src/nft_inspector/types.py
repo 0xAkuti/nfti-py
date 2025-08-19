@@ -103,6 +103,25 @@ class ProxyStandard(str, Enum):
     CUSTOM_PROXY = "Custom"               # Non-standard proxy
     NOT_PROXY = "not_proxy"               # Regular contract
 
+
+class AccessControlType(str, Enum):
+    """Core access control patterns - optimized for essential detection"""
+    NONE = "none"
+    SIMPLE_OWNER = "simple_owner"        # Basic owner() function
+    OWNABLE = "ownable"                  # OpenZeppelin Ownable pattern
+    ROLE_BASED = "role_based"            # AccessControl pattern
+    TIMELOCK = "timelock"                # TimelockController governance
+    CUSTOM = "custom"                    # Non-standard pattern
+
+
+class GovernanceType(str, Enum):
+    """Governance classification"""
+    EOA = "eoa"                          # Externally Owned Account
+    CONTRACT = "contract"                # Smart contract control
+    MULTISIG = "multisig"                # Multi-signature control
+    TIMELOCK = "timelock"                # Time-delayed execution
+    UNKNOWN = "unknown"
+
 class Interface(str, Enum):
     """Enum for ERC-165 interfaces"""
     ERC165 = "0x01ffc9a7" # ERC-165 interface

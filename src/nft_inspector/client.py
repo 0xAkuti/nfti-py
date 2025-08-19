@@ -1,7 +1,7 @@
 from typing import Optional
 from web3 import Web3
 
-from .models import ProxyInfo, TokenInfo, NFTMetadata, ContractURI
+from .models import AccessControlInfo, ProxyInfo, TokenInfo, NFTMetadata, ContractURI
 from .uri_parsers import URIResolver
 from .analyzer import UrlAnalyzer
 from .chains import ChainProvider
@@ -9,6 +9,7 @@ from .chains.web3_wrapper import EnhancedWeb3
 from .types import Interface, RpcResult, NFTStandard
 from .interface_detector import InterfaceDetector
 from .proxy_detector import ProxyDetector
+from .access_control_detector import AccessControlDetector
 
 
 NFT_ABI = [
@@ -177,6 +178,10 @@ class NFTInspector:
         proxy_detector = ProxyDetector(self.w3, contract_address)
         proxy_info = await proxy_detector.detect_proxy_standard()
         
+        # Detect access control information (separate service)
+        access_control_detector = AccessControlDetector(self.w3, contract_address)
+        access_control_info = await access_control_detector.analyze_access_control()
+        
         return TokenInfo(
             contract_address=contract_address,
             token_id=token_id,
@@ -186,7 +191,8 @@ class NFTInspector:
             contract_uri=contract_uri,
             contract_metadata=contract_metadata,
             contract_data_report=contract_data_report,
-            proxy_info=proxy_info
+            proxy_info=proxy_info,
+            access_control_info=access_control_info
         )
     
     async def inspect_contract(self, contract_address: str) -> dict:
@@ -218,6 +224,11 @@ class NFTInspector:
         await self._ensure_connection()
         proxy_detector = ProxyDetector(self.w3, contract_address)
         return await proxy_detector.detect_proxy_standard()
+
+    async def get_access_control_info(self, contract_address: str) -> AccessControlInfo:
+        await self._ensure_connection()
+        access_control_detector = AccessControlDetector(self.w3, contract_address)
+        return await access_control_detector.analyze_access_control()
 
     def get_current_chain_info(self):
         """Get information about the currently selected chain"""

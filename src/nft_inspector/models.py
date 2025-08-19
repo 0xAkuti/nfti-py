@@ -1,6 +1,6 @@
-from typing import Optional, List
+from typing import Optional, List, Dict, Any
 from pydantic import BaseModel, Field, AliasChoices, model_validator
-from .types import TokenURI, EthereumAddress, DisplayType, MediaProtocol, DataEncoding, WeakTokenURI, ProxyStandard
+from .types import TokenURI, EthereumAddress, DisplayType, MediaProtocol, DataEncoding, WeakTokenURI, ProxyStandard, AccessControlType, GovernanceType
 
 
 class NFTAttribute(BaseModel):
@@ -84,6 +84,28 @@ class ProxyInfo(BaseModel):
     is_upgradeable: bool = False
 
 
+class AccessControlInfo(BaseModel):
+    """Optimized access control analysis - essential information only"""
+    
+    # Core classification
+    access_control_type: AccessControlType
+    governance_type: GovernanceType
+    
+    # Essential ownership info
+    has_owner: bool = False
+    owner_address: Optional[EthereumAddress] = None
+    
+    # Role-based access (if detected)
+    has_roles: bool = False
+    admin_address: Optional[EthereumAddress] = None
+    
+    # Timelock info (if detected)
+    timelock_delay: Optional[int] = None
+    
+    # Security flags
+    is_eoa_controlled: bool = False      # Single EOA has control
+    supports_erc173: bool = False        # Standard compliance
+
 class TokenInfo(BaseModel):
     contract_address: EthereumAddress
     token_id: int
@@ -94,6 +116,7 @@ class TokenInfo(BaseModel):
     contract_metadata: Optional["ContractURI"] = None
     contract_data_report: Optional[ContractDataReport] = None
     proxy_info: Optional[ProxyInfo] = None
+    access_control_info: Optional[AccessControlInfo] = None
     
     class Config:
         extra = "allow"
