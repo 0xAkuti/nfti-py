@@ -94,10 +94,12 @@ class AccessControlInfo(BaseModel):
     # Essential ownership info
     has_owner: bool = False
     owner_address: Optional[EthereumAddress] = None
+    owner_ens_name: Optional[str] = None
     
     # Role-based access (if detected)
     has_roles: bool = False
     admin_address: Optional[EthereumAddress] = None
+    admin_ens_name: Optional[str] = None
     
     # Timelock info (if detected)
     timelock_delay: Optional[int] = None

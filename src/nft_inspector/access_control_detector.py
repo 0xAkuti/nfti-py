@@ -2,6 +2,7 @@ from typing import List, Optional, Dict, Any, Tuple
 from .types import AccessControlType, GovernanceType, EthereumAddress, RpcResult
 from .models import AccessControlInfo
 from .chains.web3_wrapper import EnhancedWeb3
+from .ens import resolve_multiple_ens_names
 
 
 class AccessControlDetector:
@@ -130,13 +131,24 @@ class AccessControlDetector:
         if governance_type == GovernanceType.TIMELOCK and primary_address:
             timelock_delay = await self.__get_timelock_delay(primary_address)
         
+        # Resolve ENS names for owner and admin addresses concurrently
+        addresses_to_resolve = []
+        if primary_address and primary_address != self.ZERO_ADDRESS:
+            addresses_to_resolve.append(primary_address)
+        if role_admin_address and role_admin_address != self.ZERO_ADDRESS and role_admin_address != primary_address:
+            addresses_to_resolve.append(role_admin_address)
+            
+        ens_results = await resolve_multiple_ens_names(addresses_to_resolve) if addresses_to_resolve else {}
+        
         return AccessControlInfo(
             access_control_type=access_type,
             governance_type=governance_type,
             has_owner=bool(owner_address and owner_address != self.ZERO_ADDRESS),
             owner_address=EthereumAddress.validate(primary_address) if primary_address else None,
+            owner_ens_name=ens_results.get(primary_address),
             has_roles=has_access_control,
             admin_address=EthereumAddress.validate(role_admin_address) if (role_admin_address and role_admin_address != self.ZERO_ADDRESS) else None,
+            admin_ens_name=ens_results.get(role_admin_address),
             timelock_delay=timelock_delay
         )
     
