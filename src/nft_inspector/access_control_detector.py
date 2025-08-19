@@ -95,7 +95,6 @@ class AccessControlDetector:
         essential_calls = [
             # Core ownership functions
             self.contract.functions.owner(),                    # Most common
-            self.contract.functions.admin(),                    # Proxy admin
             
             # ERC-165 interface detection for AccessControl
             self.contract.functions.supportsInterface(self.ACCESS_CONTROL_INTERFACE_ID),     # Basic AccessControl
@@ -107,32 +106,24 @@ class AccessControlDetector:
     
     async def _analyze_batch_results(self, results: List[RpcResult[Any]]) -> AccessControlInfo:
         """Analyze all results locally - no additional RPC calls needed"""
-        
         # Unpack batch results
-        owner_result, admin_result, access_control_result, access_control_enum_result = results
+        owner_result, access_control_result, access_control_enum_result = results
         
         # Extract addresses and values from successful results
         owner_address = owner_result.result if owner_result.success else None
-        admin_address = admin_result.result if admin_result.success else None
         has_access_control = access_control_result.success and access_control_result.result
-        has_enumerable_access_control = access_control_enum_result.success and access_control_enum_result.result
-        
-        # Track whether functions succeeded (important for renounced ownership detection)
-        owner_function_exists = owner_result.success
-        admin_function_exists = admin_result.success
-        
-        # Determine access control type from batch results  
-        access_type, governance_type = await self._classify_access_control(
-            owner_address, admin_address, has_access_control, owner_function_exists, admin_function_exists
-        )
         
         # Get role admin if AccessControl Enumerable is supported
         role_admin_address = None
-        if has_enumerable_access_control and access_type == AccessControlType.ROLE_BASED:
+        if access_control_enum_result.success and access_control_enum_result.result:
             role_admin_address = await self._get_default_admin_role_member()
-        
+
+        # Determine access control type from batch results  
+        access_type, governance_type = await self._classify_access_control(
+            owner_address, role_admin_address, has_access_control, owner_result.success
+        )
         # Determine primary control address (prioritize role admin for role-based systems)
-        primary_address = role_admin_address or self._get_primary_control_address(owner_address, admin_address)
+        primary_address = role_admin_address or owner_address
         
         # Get timelock delay if governance is timelock
         timelock_delay = None
@@ -145,44 +136,38 @@ class AccessControlDetector:
             has_owner=bool(owner_address and owner_address != self.ZERO_ADDRESS),
             owner_address=EthereumAddress.validate(primary_address) if primary_address else None,
             has_roles=has_access_control,
-            admin_address=EthereumAddress.validate(role_admin_address or admin_address) if (role_admin_address or admin_address) and (role_admin_address or admin_address) != self.ZERO_ADDRESS else None,
+            admin_address=EthereumAddress.validate(role_admin_address) if (role_admin_address and role_admin_address != self.ZERO_ADDRESS) else None,
             timelock_delay=timelock_delay
         )
     
     async def _classify_access_control(
         self, 
-        owner_address: Optional[str], 
-        admin_address: Optional[str], 
+        owner_address: Optional[str],
+        role_admin_address: Optional[str],
         has_access_control: bool,
-        owner_function_exists: bool,
-        admin_function_exists: bool
+        owner_function_exists: bool
     ) -> Tuple[AccessControlType, GovernanceType]:
         """Classify access control type and governance type from batch results"""
+
+        # simplify zero address to None for later comparisons
+        if owner_address and owner_address == self.ZERO_ADDRESS:
+            owner_address = None
         
         # Priority-based classification  
-        if has_access_control:
-            governance = await self._classify_governance_from_address(admin_address or owner_address)
-            return AccessControlType.ROLE_BASED, governance
+        if has_access_control:            
+            governance = await self._classify_governance_from_address(owner_address or role_admin_address)
+            return AccessControlType.ACCESS_CONTROL_OWNABLE if owner_function_exists else AccessControlType.ACCESS_CONTROL, governance
         
         # Check for ownership patterns (including renounced)
         if owner_function_exists:
-            if owner_address and owner_address != self.ZERO_ADDRESS:
+            if owner_address:
                 # Owner function exists and returns non-zero address
                 governance = await self._classify_governance_from_address(owner_address)
                 return AccessControlType.OWNABLE, governance
             else:
                 # Owner function exists but returns zero address (renounced ownership)
                 return AccessControlType.OWNABLE, GovernanceType.RENOUNCED
-        
-        # Check for admin patterns
-        if admin_function_exists:
-            if admin_address and admin_address != self.ZERO_ADDRESS:
-                governance = await self._classify_governance_from_address(admin_address)
-                return AccessControlType.SIMPLE_OWNER, governance
-            else:
-                # Admin function exists but returns zero address
-                return AccessControlType.SIMPLE_OWNER, GovernanceType.RENOUNCED
-        
+
         # No access control functions found
         return AccessControlType.NONE, GovernanceType.UNKNOWN
     
@@ -267,12 +252,3 @@ class AccessControlDetector:
             return result.success
         except Exception:
             return False
-    
-    def _get_primary_control_address(self, owner_address: Optional[str], admin_address: Optional[str]) -> Optional[str]:
-        """Get the primary control address from available addresses"""
-        # Prioritize owner over admin
-        if owner_address and owner_address != self.ZERO_ADDRESS:
-            return owner_address
-        if admin_address and admin_address != self.ZERO_ADDRESS:
-            return admin_address
-        return None

@@ -107,9 +107,9 @@ class ProxyStandard(str, Enum):
 class AccessControlType(str, Enum):
     """Core access control patterns - optimized for essential detection"""
     NONE = "none"
-    SIMPLE_OWNER = "simple_owner"        # Basic owner() function
-    OWNABLE = "ownable"                  # OpenZeppelin Ownable pattern
-    ROLE_BASED = "role_based"            # AccessControl pattern
+    OWNABLE = "ownable"                  # OpenZeppelin Ownable
+    ACCESS_CONTROL = "access_control"    # AccessControl
+    ACCESS_CONTROL_OWNABLE = "access_control_ownable" # AccessControl Ownable
     TIMELOCK = "timelock"                # TimelockController governance
     CUSTOM = "custom"                    # Non-standard pattern
 
