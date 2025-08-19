@@ -91,6 +91,33 @@ class NFTStandard(str, Enum):
     ERC1155 = "ERC-1155"
     UNKNOWN = "unknown"
 
+class Interface(str, Enum):
+    """Enum for ERC-165 interfaces"""
+    ERC165 = "0x01ffc9a7" # ERC-165 interface
+    ERC173 = "0x7f5828d0" # ownership standard
+    ERC721 = "0x80ac58cd"
+
+    ERC721_METADATA = "0x5b5e139f"
+    ERC721_TOKEN_RECEIVER = "0x150b7a02"
+    ERC721_ENUMERABLE = "0x780e9d63"
+
+    ERC1155 = "0xd9b67a26"
+    ERC1155_TOKEN_RECEIVER = "0x4e2312e0"
+    ERC1155_METADATA_URI = "0x0e89341c"
+
+    ERC2981 = "0x2a55205a" # royalty standard
+    ERC4906 = "0x49064906" # metadata update events
+    ERC4907 = "0xad092b5c" # rental extension
+    ERC7572 = "0xe8a3d485" # contract metadata (not officially mentions ERC-165)
+    ERC5192 = "0xb45a3c0e" # Minimal Soulbound NFT
+
+    # less common
+    # ERC5006 = "0xc26d96cc" # rental NFT, user extension, ERC-1155
+    # ERC5007 = "0xf140be0d" # Time NFT, add start and end time to the NFT
+    # ERC5007_COMPOSABLE = "0x75cf3842" # allows to mint from existing or merge two NFTs
+    # ERC5521 = "" # Referable NFTs
+    # ERC5725 = "" # transferable vesting NFTs
+
 
 class RpcErrorType(str, Enum):
     """Enum for RPC error types"""

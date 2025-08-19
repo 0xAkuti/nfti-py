@@ -6,7 +6,7 @@ from .uri_parsers import URIResolver
 from .analyzer import UrlAnalyzer
 from .chains import ChainProvider
 from .chains.web3_wrapper import EnhancedWeb3
-from .types import RpcResult, NFTStandard
+from .types import Interface, RpcResult, NFTStandard
 from .interface_detector import InterfaceDetector
 
 
@@ -73,7 +73,7 @@ class NFTInspector:
         self.w3: Optional[EnhancedWeb3] = None
         self.uri_resolver = URIResolver()
         self.url_analyzer = UrlAnalyzer()
-        self.interface_detector = InterfaceDetector(self.w3)
+        self.interface_detector = InterfaceDetector(self.w3) # web3 is still none
         
         # Initialize Web3 connection (will be set up lazily in _ensure_connection)
         self._connection_initialized = False
@@ -91,7 +91,8 @@ class NFTInspector:
             self.w3 = await self.chain_provider.get_enhanced_web3_connection(self.chain_id)
             if not self.w3:
                 raise ValueError(f"No working RPC found for chain ID {self.chain_id}")
-        
+
+        self.interface_detector = InterfaceDetector(self.w3)
         self._connection_initialized = True
     
     async def set_chain(self, chain_id: int):
@@ -202,6 +203,10 @@ class NFTInspector:
             "contract_metadata": contract_metadata,
             "contract_data_report": contract_data_report
         }
+    
+    async def get_supported_interfaces(self, contract_address: str) -> dict[Interface, bool]:
+        await self._ensure_connection()
+        return await self.interface_detector.get_supported_interfaces(contract_address)
     
     def get_current_chain_info(self):
         """Get information about the currently selected chain"""
