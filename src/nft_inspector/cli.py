@@ -45,9 +45,10 @@ async def _inspect_async(
     rpc_url: Optional[str],
     chain_id: int,
     analyze_media: bool,
+    analyze_trust: bool,
 ):
     """Async implementation of inspect"""
-    inspector = NFTInspector(rpc_url=rpc_url, chain_id=chain_id, analyze_media=analyze_media)
+    inspector = NFTInspector(rpc_url=rpc_url, chain_id=chain_id, analyze_media=analyze_media, analyze_trust=analyze_trust)
     
     token_info = await inspector.inspect_token(contract_address, token_id)
 
@@ -61,10 +62,11 @@ def inspect(
     rpc_url: Optional[str] = typer.Option(None, help="Ethereum RPC URL"),
     chain_id: int = typer.Option(1, help="Chain ID (default: 1 for Ethereum mainnet)"),
     analyze_media: bool = typer.Option(True, help="Analyze media URLs"),
+    analyze_trust: bool = typer.Option(True, help="Analyze trust and permanence"),
     max_length: int = typer.Option(100, help="Maximum length for string values in output (0 = no truncation)"),
 ):
     """Inspect an NFT and fetch its metadata"""
-    token_info = asyncio.run(_inspect_async(contract_address, token_id, rpc_url, chain_id, analyze_media))
+    token_info = asyncio.run(_inspect_async(contract_address, token_id, rpc_url, chain_id, analyze_media, analyze_trust))
     
     # Convert to dict and truncate long values
     data = json.loads(token_info.model_dump_json(exclude_unset=True)) # to make sure all data is reduced to basic types
@@ -142,6 +144,161 @@ def access_control(
     inspector = NFTInspector(rpc_url=rpc_url, chain_id=chain_id)
     access_control_info = asyncio.run(inspector.get_access_control_info(contract_address))
     typer.echo(json.dumps(access_control_info.model_dump(exclude_unset=True), indent=4, default=str))
+
+
+@app.command("trust-analysis")
+def trust_analysis(
+    contract_address: str,
+    token_id: int,
+    rpc_url: Optional[str] = typer.Option(None, help="Ethereum RPC URL"),
+    chain_id: int = typer.Option(1, help="Chain ID (default: 1 for Ethereum mainnet)"),
+    format: str = typer.Option("summary", help="Output format: 'summary', 'detailed', 'json'"),
+):
+    """Analyze trust and permanence of an NFT"""
+    
+    async def _analyze_trust():
+        inspector = NFTInspector(rpc_url=rpc_url, chain_id=chain_id, analyze_trust=True)
+        token_info = await inspector.inspect_token(contract_address, token_id)
+        return token_info.trust_analysis
+    
+    trust_result = asyncio.run(_analyze_trust())
+    
+    if not trust_result:
+        typer.echo("Trust analysis not available for this NFT")
+        return
+    
+    if format == "json":
+        typer.echo(json.dumps(trust_result.model_dump(exclude_unset=True), indent=4, default=str))
+    elif format == "detailed":
+        _print_detailed_trust_analysis(trust_result)
+    else:  # summary
+        _print_trust_summary(trust_result)
+
+
+def _print_trust_summary(analysis):
+    """Print a concise trust analysis summary"""
+    typer.echo(f"🛡️  NFT Trust Analysis")
+    typer.echo("=" * 50)
+    
+    # Overall score with color
+    score = analysis.overall_score
+    level = analysis.overall_level.value.title()
+    
+    if score >= 8:
+        color = typer.colors.GREEN
+    elif score >= 6:
+        color = typer.colors.YELLOW
+    elif score >= 4:
+        color = typer.colors.MAGENTA
+    else:
+        color = typer.colors.RED
+    
+    typer.secho(f"Overall Score: {score}/10 ({level})", fg=color, bold=True)
+    typer.echo()
+    
+    # Component scores
+    typer.echo("📊 Component Scores:")
+    typer.echo(f"   Data Permanence: {analysis.permanence.overall_score}/10")
+    typer.echo(f"   Trustlessness:   {analysis.trustlessness.overall_score}/10")
+    typer.echo(f"   Chain Trust:     {analysis.chain_trust.stage_score}/10")
+    typer.echo()
+    
+    # Key insights
+    if analysis.key_risks:
+        typer.echo("⚠️  Key Risks:")
+        for risk in analysis.key_risks[:3]:  # Show top 3
+            typer.echo(f"   • {risk}")
+        typer.echo()
+    
+    if analysis.strengths:
+        typer.echo("✅ Strengths:")
+        for strength in analysis.strengths[:3]:  # Show top 3
+            typer.echo(f"   • {strength}")
+        typer.echo()
+    
+    # Summary line
+    typer.echo(f"💡 {analysis.get_summary()}")
+
+
+def _print_detailed_trust_analysis(analysis):
+    """Print detailed trust analysis with all components"""
+    typer.echo(f"🛡️  Detailed NFT Trust Analysis")
+    typer.echo("=" * 60)
+    
+    # Overall
+    typer.secho(f"Overall: {analysis.overall_score}/10 ({analysis.overall_level.value.title()})", bold=True)
+    typer.echo()
+    
+    # Permanence details
+    typer.echo("📁 Data Permanence Analysis:")
+    p = analysis.permanence
+    typer.echo(f"   Overall Score:        {p.overall_score}/10")
+    typer.echo(f"   Metadata:            {p.metadata_score}/10 ({p.protocol_breakdown['metadata']})")
+    typer.echo(f"   Image:               {p.image_score}/10 ({p.protocol_breakdown['image']})")
+    typer.echo(f"   Animation:           {p.animation_score}/10 ({p.protocol_breakdown['animation']})")
+    typer.echo(f"   Contract Metadata:   {p.contract_metadata_score}/10 ({p.protocol_breakdown['contract_metadata']})")
+    typer.echo(f"   Fully On-chain:      {'Yes' if p.is_fully_onchain else 'No'}")
+    typer.echo(f"   External Dependencies: {'Yes' if p.has_external_deps else 'No'}")
+    typer.echo(f"   Weakest Component:   {p.weakest_component}")
+    if p.gateway_penalty > 0:
+        typer.echo(f"   Gateway Penalty:     -{p.gateway_penalty:.1f}")
+    if p.dependency_penalty > 0:
+        typer.echo(f"   Dependency Penalty:  -{p.dependency_penalty:.1f}")
+    if p.chain_penalty > 0:
+        typer.echo(f"   Chain Penalty:       -{p.chain_penalty:.1f}")
+    typer.echo()
+    
+    # Trustlessness details
+    typer.echo("🔐 Trustlessness Analysis:")
+    t = analysis.trustlessness
+    typer.echo(f"   Overall Score:       {t.overall_score}/10")
+    typer.echo(f"   Access Control:      {t.access_control_score}/10")
+    typer.echo(f"   Governance:          {t.governance_score}/10")
+    typer.echo(f"   Upgradeability:      {t.upgradeability_score}/10")
+    typer.echo(f"   Has Owner:           {'Yes' if t.has_owner else 'No'}")
+    if t.has_owner:
+        owner_display = t.owner_ens if t.owner_ens else "No ENS"
+        typer.echo(f"   Owner Type:          {t.owner_type} ({owner_display})")
+    typer.echo(f"   Is Upgradeable:      {'Yes' if t.is_upgradeable else 'No'}")
+    if t.is_upgradeable and t.proxy_type:
+        typer.echo(f"   Proxy Type:          {t.proxy_type}")
+    if t.timelock_delay:
+        typer.echo(f"   Timelock Delay:      {t.timelock_delay}s")
+    typer.echo()
+    
+    # Chain details
+    typer.echo("⛓️  Chain Trust Analysis:")
+    c = analysis.chain_trust
+    typer.echo(f"   Chain:               {c.chain_name} (ID: {c.chain_id})")
+    typer.echo(f"   Stage Score:         {c.stage_score}/10")
+    if c.l2beat_stage:
+        typer.echo(f"   L2Beat Stage:        {c.l2beat_stage}")
+    typer.echo(f"   Is Testnet:          {'Yes' if c.is_testnet else 'No'}")
+    typer.echo()
+    
+    # Trust assumptions
+    if analysis.trust_assumptions:
+        typer.echo("🔍 Trust Assumptions:")
+        for assumption in analysis.trust_assumptions:
+            severity_color = {
+                "low": typer.colors.GREEN,
+                "medium": typer.colors.YELLOW,
+                "high": typer.colors.MAGENTA,
+                "critical": typer.colors.RED
+            }.get(assumption.severity.value, typer.colors.WHITE)
+            
+            typer.secho(f"   [{assumption.severity.value.upper()}] {assumption.description}", fg=severity_color)
+            typer.echo(f"      Impact: {assumption.impact}")
+            if assumption.recommendation:
+                typer.echo(f"      Recommendation: {assumption.recommendation}")
+            typer.echo()
+    
+    # Recommendations
+    if analysis.recommendations:
+        typer.echo("💡 Recommendations:")
+        for rec in analysis.recommendations:
+            typer.echo(f"   • {rec}")
+        typer.echo()
 
 
 if __name__ == "__main__":

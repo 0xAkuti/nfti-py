@@ -68,9 +68,9 @@ class MediaProtocol(str, Enum):
         """Get a score for the media protocol"""
         return {
             MediaProtocol.DATA_URI: 10,
-            MediaProtocol.ARWEAVE: 8,
-            MediaProtocol.IPFS: 6,
-            MediaProtocol.IPNS: 4,
+            MediaProtocol.ARWEAVE: 7,
+            MediaProtocol.IPFS: 5,
+            MediaProtocol.IPNS: 3,
             MediaProtocol.HTTPS: 2,
             MediaProtocol.HTTP: 1,
             MediaProtocol.NONE: 0,
@@ -83,6 +83,14 @@ class DataEncoding(str, Enum):
     BASE64 = "base64"
     PERCENT = "percent"
     PLAIN = "plain"
+
+
+class GatewayLevel(str, Enum):
+    """Gateway access level for URLs"""
+    NATIVE = "native"                    # Direct protocol access (ipfs://, ar://)
+    IPFS_GATEWAY = "ipfs-gateway"        # IPFS accessed via HTTP gateway
+    ARWEAVE_GATEWAY = "arweave-gateway"  # Arweave accessed via HTTP gateway
+    CENTRALIZED = "centralized"          # Direct HTTP(S) to centralized server
 
 
 class NFTStandard(str, Enum):

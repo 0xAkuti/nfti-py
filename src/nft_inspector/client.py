@@ -10,6 +10,7 @@ from .types import Interface, RpcResult, NFTStandard
 from .interface_detector import InterfaceDetector
 from .proxy_detector import ProxyDetector
 from .access_control_detector import AccessControlDetector
+from .trust_analyzer import TrustAnalyzer
 
 
 NFT_ABI = [
@@ -68,7 +69,7 @@ def substitute_erc1155_id(uri: str, token_id: int) -> str:
 
 
 class NFTInspector:
-    def __init__(self, rpc_url: Optional[str] = None, chain_id: Optional[int] = None, analyze_media: bool = True):
+    def __init__(self, rpc_url: Optional[str] = None, chain_id: Optional[int] = None, analyze_media: bool = True, analyze_trust: bool = True):
         self.chain_provider = ChainProvider()
         self.chain_id = chain_id or 1  # Default to Ethereum mainnet
         self.rpc_url = rpc_url
@@ -76,6 +77,8 @@ class NFTInspector:
         self.uri_resolver = URIResolver()
         self.url_analyzer = UrlAnalyzer()
         self.interface_detector = InterfaceDetector(self.w3) # web3 is still none
+        self.analyze_media = analyze_media
+        self.analyze_trust = analyze_trust
         
         # Initialize Web3 connection (will be set up lazily in _ensure_connection)
         self._connection_initialized = False
@@ -163,7 +166,7 @@ class NFTInspector:
         if token_uri:
             metadata = await self.fetch_metadata(token_uri)
             
-            if metadata:
+            if metadata and self.analyze_media:
                 data_report = await self.url_analyzer.analyze(token_uri, metadata)
         
         # Handle contract URI result  
@@ -171,7 +174,7 @@ class NFTInspector:
         if contract_uri:
             contract_metadata = await self.fetch_contract_metadata(contract_uri)
             
-            if contract_metadata:
+            if contract_metadata and self.analyze_media:
                 contract_data_report = await self.url_analyzer.analyze_contract(contract_uri, contract_metadata)
         
         # Detect proxy information
@@ -182,7 +185,8 @@ class NFTInspector:
         access_control_detector = AccessControlDetector(self.w3, contract_address)
         access_control_info = await access_control_detector.analyze_access_control()
         
-        return TokenInfo(
+        # Create TokenInfo first
+        token_info = TokenInfo(
             contract_address=contract_address,
             token_id=token_id,
             token_uri=token_uri,
@@ -194,6 +198,18 @@ class NFTInspector:
             proxy_info=proxy_info,
             access_control_info=access_control_info
         )
+        
+        # Perform trust analysis if enabled
+        if self.analyze_trust:
+            try:
+                chain_info = self.get_current_chain_info()
+                trust_analyzer = TrustAnalyzer(chain_info)
+                token_info.trust_analysis = trust_analyzer.analyze_token_trust(token_info)
+            except Exception:
+                # Trust analysis is optional - don't fail the entire request
+                pass
+        
+        return token_info
     
     async def inspect_contract(self, contract_address: str) -> dict:
         """Inspect contract metadata only"""

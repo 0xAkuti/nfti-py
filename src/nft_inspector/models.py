@@ -1,6 +1,7 @@
 from typing import Optional, List, Dict, Any
 from pydantic import BaseModel, Field, AliasChoices, model_validator
-from .types import TokenURI, EthereumAddress, DisplayType, MediaProtocol, DataEncoding, WeakTokenURI, ProxyStandard, AccessControlType, GovernanceType
+from .types import TokenURI, EthereumAddress, DisplayType, MediaProtocol, DataEncoding, WeakTokenURI, ProxyStandard, AccessControlType, GovernanceType, GatewayLevel
+
 
 
 class NFTAttribute(BaseModel):
@@ -31,6 +32,7 @@ class UrlInfo(BaseModel):
     url: WeakTokenURI
     protocol: MediaProtocol
     is_gateway: bool = False
+    gateway_level: Optional[GatewayLevel] = None
     mime_type: Optional[str] = None
     size_bytes: Optional[int] = None
     accessible: bool = True
@@ -106,7 +108,7 @@ class AccessControlInfo(BaseModel):
 
 class TokenInfo(BaseModel):
     contract_address: EthereumAddress
-    token_id: int
+    token_id: Optional[int] = None
     token_uri: Optional[TokenURI] = None
     metadata: Optional[NFTMetadata] = None
     data_report: Optional[TokenDataReport] = None
@@ -115,9 +117,11 @@ class TokenInfo(BaseModel):
     contract_data_report: Optional[ContractDataReport] = None
     proxy_info: Optional[ProxyInfo] = None
     access_control_info: Optional[AccessControlInfo] = None
+    trust_analysis: Optional[Any] = None
     
     class Config:
         extra = "allow"
+
 
 class ContractURI(BaseModel):
     name: str
@@ -156,3 +160,7 @@ class ContractURI(BaseModel):
 
     class Config:
         extra = "allow"
+
+
+# Rebuild models to resolve forward references
+TokenInfo.model_rebuild()

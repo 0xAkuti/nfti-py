@@ -4,7 +4,7 @@ from typing import Optional
 from urllib.parse import urlparse
 
 from .models import UrlInfo, TokenDataReport, ContractDataReport, NFTMetadata, ContractURI
-from .types import MediaProtocol
+from .types import MediaProtocol, GatewayLevel
 from .data_uri_utils import DataURIParser
 from .svg_analyzer import SvgAnalyzer
 from .html_analyzer import HtmlAnalyzer
@@ -43,6 +43,36 @@ class UrlAnalyzer:
         
         return protocol_map.get(scheme, MediaProtocol.UNKNOWN)
     
+    def _determine_gateway_level(self, url: str, protocol: MediaProtocol) -> tuple[bool, Optional[GatewayLevel]]:
+        """Determine gateway level and usage for URL"""
+        if url.startswith('data:'):
+            return False, None
+        
+        # Native protocol URLs are typically accessed via gateways
+        if url.startswith('ipfs://'):
+            return True, GatewayLevel.NATIVE
+        if url.startswith('ar://'):
+            return True, GatewayLevel.NATIVE
+        
+        # HTTP URLs could be direct hosting or gateway access
+        if protocol in [MediaProtocol.HTTP, MediaProtocol.HTTPS]:
+            parsed = urlparse(url)
+            host = parsed.netloc.lower()
+            
+            # Check for IPFS gateways
+            if '/ipfs/' in url or '/ipns/' in url:
+                return True, GatewayLevel.IPFS_GATEWAY
+            
+            # Check for Arweave gateways
+            if 'arweave' in url:
+                return True, GatewayLevel.ARWEAVE_GATEWAY
+            
+            # Otherwise it's centralized hosting
+            return False, GatewayLevel.CENTRALIZED
+        
+        # Other protocols are native
+        return False, GatewayLevel.NATIVE
+    
     def _analyze_data_uri(self, url: str) -> UrlInfo:
         """Analyze data URI"""
         try:
@@ -51,6 +81,8 @@ class UrlAnalyzer:
             return UrlInfo(
                 url=url,
                 protocol=MediaProtocol.DATA_URI,
+                is_gateway=False,
+                gateway_level=None,
                 mime_type=data_info.media_type,
                 size_bytes=data_info.size_bytes,
                 accessible=True,
@@ -60,6 +92,8 @@ class UrlAnalyzer:
             return UrlInfo(
                 url=url,
                 protocol=MediaProtocol.DATA_URI,
+                is_gateway=False,
+                gateway_level=None,
                 accessible=False,
                 error=str(e)
             )
@@ -80,6 +114,8 @@ class UrlAnalyzer:
         return UrlInfo(
             url=url,
             protocol=MediaProtocol.NONE,
+            is_gateway=False,
+            gateway_level=None,
             mime_type=mime_type,
             size_bytes=size_bytes,
             accessible=True
@@ -87,17 +123,17 @@ class UrlAnalyzer:
 
     async def _analyze_http_url(self, url: str, protocol: MediaProtocol) -> UrlInfo:
         """Analyze HTTP/HTTPS URL"""
-
-        is_gateway = False
+        
+        # Determine gateway level and usage
+        is_gateway, gateway_level = self._determine_gateway_level(url, protocol)
+        
         # Convert IPFS/Arweave URLs to HTTP for analysis
         analysis_url = url
         if protocol == MediaProtocol.IPFS:
             analysis_url = url.replace("ipfs://", "https://ipfs.io/ipfs/")
         elif protocol == MediaProtocol.ARWEAVE:
             analysis_url = url.replace("ar://", "https://arweave.net/")
-        elif protocol == MediaProtocol.HTTP or protocol == MediaProtocol.HTTPS:
-            # check if the url is a gateway
-            is_gateway = 'ipfs' in url or 'arweave' in url
+        
         try:            
             async with httpx.AsyncClient(timeout=self.timeout) as client:
                 # Try HEAD request first
@@ -125,6 +161,7 @@ class UrlAnalyzer:
                     url=url,
                     protocol=protocol,
                     is_gateway=is_gateway,
+                    gateway_level=gateway_level,
                     mime_type=mime_type,
                     size_bytes=size_bytes,
                     accessible=True
@@ -134,6 +171,7 @@ class UrlAnalyzer:
                 url=url,
                 protocol=protocol,
                 is_gateway=is_gateway,
+                gateway_level=gateway_level,
                 accessible=False,
                 error=str(e)
             )
