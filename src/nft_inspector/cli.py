@@ -200,7 +200,6 @@ def _print_trust_summary(analysis):
     typer.echo("📊 Component Scores:")
     typer.echo(f"   Data Permanence: {analysis.permanence.overall_score}/10")
     typer.echo(f"   Trustlessness:   {analysis.trustlessness.overall_score}/10")
-    typer.echo(f"   Chain Trust:     {analysis.chain_trust.stage_score}/10")
     typer.echo()
     
     # Key insights
@@ -265,7 +264,6 @@ def _print_detailed_trust_analysis(analysis):
     typer.echo("⛓️  Chain Trust Analysis:")
     c = analysis.chain_trust
     typer.echo(f"   Chain:               {c.chain_name} (ID: {c.chain_id})")
-    typer.echo(f"   Stage Score:         {c.stage_score}/10")
     if c.l2beat_stage:
         typer.echo(f"   L2Beat Stage:        {c.l2beat_stage}")
     typer.echo(f"   Is Testnet:          {'Yes' if c.is_testnet else 'No'}")

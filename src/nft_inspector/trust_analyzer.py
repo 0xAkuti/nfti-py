@@ -31,14 +31,6 @@ class TrustAnalyzer:
     PERMANENCE_WEIGHT = 0.7
     TRUSTLESSNESS_WEIGHT = 0.3
     
-    # L2Beat rollup stage scoring
-    L2BEAT_STAGE_SCORES = {
-        "Stage 2": 10,    # Full decentralization
-        "Stage 1": 7,     # Limited decentralization  
-        "Stage 0": 4,     # Centralized with training wheels
-        None: 2           # No stage information available
-    }
-    
     # Chain penalty multipliers for permanence scoring - only mainnet gets 0.0
     CHAIN_PENALTIES = {
         "Stage 2": 0.5,   # Small penalty even for best L2
@@ -436,15 +428,11 @@ class TrustAnalyzer:
         chain_data = self._l2beat_data.get(str(chain_id))
         l2beat_stage = chain_data.stage if chain_data else None
         
-        # Calculate stage score - this is our main L2 trust metric
-        stage_score = self.L2BEAT_STAGE_SCORES.get(l2beat_stage, 2)
-        
         return ChainTrustScore(
             chain_id=chain_id,
             chain_name=chain_name,
             is_testnet=is_testnet,
-            l2beat_stage=l2beat_stage,
-            stage_score=stage_score
+            l2beat_stage=l2beat_stage
         )
     
     def _score_to_trust_level(self, score: int) -> TrustLevel:
@@ -584,7 +572,7 @@ class TrustAnalyzer:
         if trustlessness.is_upgradeable:
             risks.append("Contract can be upgraded")
         
-        if chain_trust.chain_id != 1 and not chain_trust.is_testnet and chain_trust.stage_score <= 4:
+        if chain_trust.chain_id != 1 and not chain_trust.is_testnet and chain_trust.l2beat_stage != "Stage 2":
             risks.append("Depends on centralized L2 infrastructure")
         
         return risks[:3]  # Keep it simple

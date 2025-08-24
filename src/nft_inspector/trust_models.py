@@ -86,7 +86,6 @@ class ChainTrustScore(BaseModel):
     chain_name: str
     is_testnet: bool
     l2beat_stage: Optional[str] = None  # "Stage 0", "Stage 1", "Stage 2", None
-    stage_score: int          # 0-10 score based on stage only
 
 
 class TrustAnalysisResult(BaseModel):
@@ -144,7 +143,6 @@ class TrustAnalysisResult(BaseModel):
                 }
             },
             "chain": {
-                "score": self.chain_trust.stage_score,
                 "l2beat_stage": self.chain_trust.l2beat_stage
             }
         }
