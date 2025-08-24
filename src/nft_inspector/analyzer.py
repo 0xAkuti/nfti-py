@@ -259,9 +259,9 @@ class UrlAnalyzer:
         """Analyze all media URLs in metadata"""
         report = TokenDataReport(token_uri=await self.analyze_media(token_uri))
 
-        # iterate optional fields
+        # iterate optional fields (excluding external_url/link which is just a reference link)
         for field_name, field_info in TokenDataReport.model_fields.items():
-            if field_info.is_required() or (field_value := getattr(metadata, field_name)) is None:
+            if field_info.is_required() or (field_value := getattr(metadata, field_name)) is None or field_name.startswith("external_"):
                 continue
             setattr(report, field_name, await self.analyze_media(field_value))
         
