@@ -1,0 +1,116 @@
+{
+    "1027303": {
+        "chain_name": "Facet",
+        "rollup_type": "Optimistic Rollup",
+        "stage": "Stage 2",
+        "link": "https://l2beat.com/scaling/projects/facet"
+    },
+    "42161": {
+        "chain_name": "Arbitrum One",
+        "rollup_type": "Optimistic Rollup",
+        "stage": "Stage 1",
+        "link": "https://l2beat.com/scaling/projects/arbitrum"
+    },
+    "8453": {
+        "chain_name": "Base",
+        "rollup_type": "Optimistic Rollup",
+        "stage": "Stage 1",
+        "link": "https://l2beat.com/scaling/projects/base"
+    },
+    "10": {
+        "chain_name": "OP Mainnet",
+        "rollup_type": "Optimistic Rollup",
+        "stage": "Stage 1",
+        "link": "https://l2beat.com/scaling/projects/op-mainnet"
+    },
+    "324": {
+        "chain_name": "ZKsync Era",
+        "rollup_type": "ZK Rollup",
+        "stage": "Stage 0",
+        "link": "https://l2beat.com/scaling/projects/zksync-era"
+    },
+    "130": {
+        "chain_name": "Unichain",
+        "rollup_type": "Optimistic Rollup",
+        "stage": "Stage 1",
+        "link": "https://l2beat.com/scaling/projects/unichain"
+    },
+    "59144": {
+        "chain_name": "Linea",
+        "rollup_type": "ZK Rollup",
+        "stage": "Stage 0",
+        "link": "https://l2beat.com/scaling/projects/linea"
+    },
+    "23448594291968334": {
+        "chain_name": "Starknet",
+        "rollup_type": "ZK Rollup",
+        "stage": "Stage 1",
+        "link": "https://l2beat.com/scaling/projects/starknet"
+    },
+    "747474": {
+        "chain_name": "Katana",
+        "rollup_type": "ZK Rollup",
+        "stage": "Stage 0",
+        "link": "https://l2beat.com/scaling/projects/katana"
+    },
+    "534352": {
+        "chain_name": "Scroll",
+        "rollup_type": "ZK Rollup",
+        "stage": "Stage 1",
+        "link": "https://l2beat.com/scaling/projects/scroll"
+    },
+    "2741": {
+        "chain_name": "Abstract",
+        "rollup_type": "ZK Rollup",
+        "stage": "Stage 0",
+        "link": "https://l2beat.com/scaling/projects/abstract"
+    },
+    "60808": {
+        "chain_name": "BOB",
+        "rollup_type": "Optimistic Rollup",
+        "stage": "Stage 0",
+        "link": "https://l2beat.com/scaling/projects/bob"
+    },
+    "57073": {
+        "chain_name": "Ink",
+        "rollup_type": "Optimistic Rollup",
+        "stage": "Stage 1",
+        "link": "https://l2beat.com/scaling/projects/ink"
+    },
+    "1101": {
+        "chain_name": "Polygon zkEVM",
+        "rollup_type": "ZK Rollup",
+        "stage": "Stage 0",
+        "link": "https://l2beat.com/scaling/projects/polygonzkevm"
+    },
+    "7887": {
+        "chain_name": "Kinto",
+        "rollup_type": "Optimistic Rollup",
+        "stage": "Stage 1",
+        "link": "https://l2beat.com/scaling/projects/kinto"
+    },
+    "543210": {
+        "chain_name": "ZERO Network",
+        "rollup_type": "ZK Rollup",
+        "stage": "Stage 0",
+        "link": "https://l2beat.com/scaling/projects/zeronetwork"
+    },
+    "1456": {
+        "chain_name": "ZKBase",
+        "rollup_type": "ZK Rollup",
+        "stage": "Stage 0",
+        "link": "https://l2beat.com/scaling/projects/zkspace"
+    },
+    "2035": {
+        "chain_name": "Phala",
+        "rollup_type": "ZK Rollup",
+        "stage": "Stage 0",
+        "link": "https://l2beat.com/scaling/projects/phala"
+    },
+    "274": {
+        "chain_name": "LaChain",
+        "rollup_type": "ZK Rollup",
+        "stage": "Stage 0",
+        "link": "https://l2beat.com/scaling/projects/lachain"
+    }
+}
