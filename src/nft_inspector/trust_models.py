@@ -62,8 +62,7 @@ class PermanenceScore(BaseModel):
 class TrustlessnessScore(BaseModel):
     """Detailed breakdown of trustlessness/control scoring"""
     overall_score: int         # 0-10 composite score
-    access_control_score: int  # Score based on ownership/access patterns
-    governance_score: int      # Score based on governance type (EOA vs multisig vs timelock)
+    access_control_score: int  # Score based on contract control (merged access control and governance)
     upgradeability_score: int  # Score based on proxy/upgrade patterns
     
     # Analysis details
@@ -140,8 +139,7 @@ class TrustAnalysisResult(BaseModel):
             "trustlessness": {
                 "score": self.trustlessness.overall_score,
                 "components": {
-                    "access_control": self.trustlessness.access_control_score,
-                    "governance": self.trustlessness.governance_score,
+                    "contract_control": self.trustlessness.access_control_score,
                     "upgradeability": self.trustlessness.upgradeability_score
                 }
             },

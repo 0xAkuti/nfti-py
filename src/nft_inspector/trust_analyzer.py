@@ -313,21 +313,17 @@ class TrustAnalyzer:
     def _analyze_trustlessness(self, token_info: TokenInfo) -> TrustlessnessScore:
         """Analyze trustlessness based on contract control patterns"""
         
-        # Analyze access control
-        access_control_score, has_owner, owner_type, governance_transparency = self._score_access_control(token_info.access_control_info)
+        # Analyze contract control (merged access control and governance)
+        control_score, has_owner, owner_type, governance_transparency = self._score_contract_control(token_info.access_control_info)
         
-        # Analyze governance type
-        governance_score = self._score_governance_type(token_info.access_control_info)
-        
-        # Analyze upgradeability
+        # Analyze upgradeability/proxy risks
         upgradeability_score, is_upgradeable, proxy_type = self._score_upgradeability(token_info.proxy_info)
         
         # Calculate weighted overall score
-        # Access control is most important, then upgradeability, then governance transparency
+        # Contract control is primary concern, then proxy/upgrade risks
         overall_score = round(
-            0.5 * access_control_score + 
-            0.3 * upgradeability_score + 
-            0.2 * governance_score
+            0.7 * control_score + 
+            0.3 * upgradeability_score
         )
         
         # Get ENS information
@@ -342,8 +338,7 @@ class TrustAnalyzer:
         
         return TrustlessnessScore(
             overall_score=overall_score,
-            access_control_score=access_control_score,
-            governance_score=governance_score,
+            access_control_score=control_score,
             upgradeability_score=upgradeability_score,
             has_owner=has_owner,
             owner_type=owner_type,
@@ -355,8 +350,8 @@ class TrustAnalyzer:
             timelock_delay=timelock_delay
         )
     
-    def _score_access_control(self, access_control_info: Optional[Any]) -> Tuple[int, bool, str, int]:
-        """Score access control patterns and return (score, has_owner, owner_type, transparency)"""
+    def _score_contract_control(self, access_control_info: Optional[Any]) -> Tuple[int, bool, str, int]:
+        """Score contract control patterns (merged access control and governance) and return (score, has_owner, owner_type, transparency)"""
         if not access_control_info:
             return 10, False, "none", 10  # No access control info = assume no owner
         
@@ -372,6 +367,7 @@ class TrustAnalyzer:
         elif access_control_info.governance_type == GovernanceType.RENOUNCED:
             owner_type = "renounced"
             score = 10  # Best case - no owner
+            transparency = 10
         elif access_control_info.governance_type == GovernanceType.EOA:
             owner_type = "eoa"
             score = 3   # Worst case - single EOA control
@@ -406,57 +402,34 @@ class TrustAnalyzer:
         
         return score, has_owner, owner_type, transparency
     
-    def _score_governance_type(self, access_control_info: Optional[Any]) -> int:
-        """Score based on governance type characteristics"""
-        if not access_control_info:
-            return 10  # No access control info = no governance needed
-        
-        # If there's no owner, governance type doesn't matter
-        has_owner = access_control_info.has_owner or access_control_info.has_roles
-        if not has_owner:
-            return 10  # No owner = no governance needed = perfect score
-        
-        if not access_control_info.governance_type:
-            return 8  # Has owner but unknown governance type
-        
-        governance_scores = {
-            GovernanceType.RENOUNCED: 10,    # Perfect - no governance
-            GovernanceType.TIMELOCK: 7,      # Good - time-delayed but still governance
-            GovernanceType.MULTISIG: 5,      # Moderate - requires trust in signers  
-            GovernanceType.CONTRACT: 3,      # Poor - opaque contract logic
-            GovernanceType.EOA: 2,           # Very poor - single point of control
-            GovernanceType.UNKNOWN: 1        # Critical - has owner but governance unclear
-        }
-        
-        return governance_scores.get(access_control_info.governance_type, 5)
     
     def _score_upgradeability(self, proxy_info: Optional[Any]) -> Tuple[int, bool, Optional[str]]:
-        """Score based on upgradeability and return (score, is_upgradeable, proxy_type)"""
+        """Score based on proxy risk for NFT tokenURI permanence and return (score, is_upgradeable, proxy_type)"""
         if not proxy_info:
             return 10, False, None  # No proxy = immutable = best score
         
         if not proxy_info.is_proxy:
             return 10, False, None  # Not a proxy = immutable
         
-        # Contract is upgradeable - determine severity based on proxy type
+        # Contract is a proxy - assess tokenURI risk based on proxy type
         proxy_type = proxy_info.proxy_standard.value if proxy_info.proxy_standard else "unknown"
         is_upgradeable = proxy_info.is_upgradeable
         
         if not is_upgradeable:
-            return 8, False, proxy_type  # Proxy but not upgradeable (e.g., minimal proxy)
+            return 9, False, proxy_type  # Proxy but not upgradeable (e.g., minimal proxy) = very good
         
-        # Upgradeable proxy - score based on type
+        # Upgradeable proxy - severe scoring for tokenURI risk
         proxy_scores = {
-            ProxyStandard.EIP_1167_MINIMAL: 8,      # Minimal proxy - usually immutable
-            ProxyStandard.EIP_1822_UUPS: 4,         # UUPS - self-upgradeable
-            ProxyStandard.EIP_1967_TRANSPARENT: 5,  # Transparent - admin controlled
-            ProxyStandard.BEACON_PROXY: 4,          # Beacon - centrally controlled
-            ProxyStandard.EIP_2535_DIAMOND: 3,      # Diamond - complex upgradeability
-            ProxyStandard.CUSTOM_PROXY: 4,          # Unknown custom logic
+            ProxyStandard.EIP_1167_MINIMAL: 9,      # Clone - usually safe for tokenURI
+            ProxyStandard.EIP_1967_TRANSPARENT: 3,  # Admin can change tokenURI implementation
+            ProxyStandard.EIP_1822_UUPS: 2,         # Self-upgrade can modify tokenURI function
+            ProxyStandard.BEACON_PROXY: 2,          # Central beacon can change tokenURI behavior
+            ProxyStandard.EIP_2535_DIAMOND: 2,      # Complex facets - highest tokenURI risk
+            ProxyStandard.CUSTOM_PROXY: 2,          # Unknown logic - assume high tokenURI risk
             ProxyStandard.NOT_PROXY: 10             # Should not happen here
         }
         
-        score = proxy_scores.get(proxy_info.proxy_standard, 4)
+        score = proxy_scores.get(proxy_info.proxy_standard, 2)
         return score, True, proxy_type
     
     def _analyze_chain_trust(self, _token_info: TokenInfo) -> ChainTrustScore:

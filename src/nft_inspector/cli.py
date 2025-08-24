@@ -240,10 +240,6 @@ def _print_detailed_trust_analysis(analysis):
     typer.echo(f"   Fully On-chain:      {'Yes' if p.is_fully_onchain else 'No'}")
     typer.echo(f"   External Dependencies: {'Yes' if p.has_external_deps else 'No'}")
     typer.echo(f"   Weakest Component:   {p.weakest_component}")
-    if p.gateway_penalty > 0:
-        typer.echo(f"   Gateway Penalty:     -{p.gateway_penalty:.1f}")
-    if p.dependency_penalty > 0:
-        typer.echo(f"   Dependency Penalty:  -{p.dependency_penalty:.1f}")
     if p.chain_penalty > 0:
         typer.echo(f"   Chain Penalty:       -{p.chain_penalty:.1f}")
     typer.echo()
@@ -252,8 +248,7 @@ def _print_detailed_trust_analysis(analysis):
     typer.echo("🔐 Trustlessness Analysis:")
     t = analysis.trustlessness
     typer.echo(f"   Overall Score:       {t.overall_score}/10")
-    typer.echo(f"   Access Control:      {t.access_control_score}/10")
-    typer.echo(f"   Governance:          {t.governance_score}/10")
+    typer.echo(f"   Contract Control:    {t.access_control_score}/10")
     typer.echo(f"   Upgradeability:      {t.upgradeability_score}/10")
     typer.echo(f"   Has Owner:           {'Yes' if t.has_owner else 'No'}")
     if t.has_owner:
