@@ -39,12 +39,12 @@ class TrustAnalyzer:
         None: 2           # No stage information available
     }
     
-    # Chain penalty multipliers for permanence scoring
+    # Chain penalty multipliers for permanence scoring - only mainnet gets 0.0
     CHAIN_PENALTIES = {
-        "Stage 2": 0.0,   # No penalty
-        "Stage 1": 0.5,   # Small penalty
-        "Stage 0": 1.0,   # Moderate penalty
-        None: 1.5         # High penalty for unknown
+        "Stage 2": 0.5,   # Small penalty even for best L2
+        "Stage 1": 1.0,   # Moderate penalty
+        "Stage 0": 1.5,   # High penalty
+        None: 2.0         # Maximum penalty for unknown
     }
     
     def __init__(self, chain_info: Optional[ChainInfo] = None):
@@ -176,7 +176,7 @@ class TrustAnalyzer:
         )
     
     def _analyze_permanence(self, token_info: TokenInfo) -> PermanenceScore:
-        """Analyze data permanence across all token components"""
+        """Analyze data permanence across all token components with simplified gating system"""
         
         # Get base protocol scores
         metadata_score = self._get_url_protocol_score(token_info.data_report.token_uri if token_info.data_report else None)
@@ -184,58 +184,51 @@ class TrustAnalyzer:
         animation_score = self._get_url_protocol_score(token_info.data_report.animation_url if token_info.data_report else None)
         contract_metadata_score = self._get_url_protocol_score(token_info.contract_data_report.contract_uri if token_info.contract_data_report else None)
         
-        # Calculate gateway penalties
-        gateway_penalty = self._calculate_gateway_penalty(token_info)
+        # Apply protocol gating - metadata gates token components
+        gated_image_score = min(metadata_score, image_score) if image_score > 0 else 0
+        gated_animation_score = min(metadata_score, animation_score) if animation_score > 0 else 0
         
-        # Calculate external dependency penalties from SVG/HTML analysis
-        dependency_penalty = self._calculate_dependency_penalty(token_info)
+        # Contract metadata gating - contract URI gates contract metadata images
+        contract_uri_score = self._get_url_protocol_score(token_info.contract_data_report.contract_uri if token_info.contract_data_report else None)
+        gated_contract_score = min(contract_uri_score, contract_metadata_score) if contract_metadata_score > 0 else 0
+        
+        # Simplified base score calculation: 90% token data + 10% contract metadata
+        token_components = []
+        if gated_image_score > 0:
+            token_components.append(gated_image_score)
+        if gated_animation_score > 0:
+            token_components.append(gated_animation_score)
+        
+        # Token score is mean of available components
+        token_score = sum(token_components) / len(token_components) if token_components else 0
+        
+        # Base score with 90/10 split
+        base_score = token_score
+        if gated_contract_score > 0:
+            base_score = 0.9 * token_score + 0.1 * gated_contract_score
         
         # Calculate chain penalties for L2s
         chain_penalty = self._calculate_chain_penalty()
         
-        # Apply metadata gating - if metadata is centralized, other components are at risk
-        metadata_gating_factor = 1.0 if metadata_score >= 6 else (0.5 if metadata_score >= 4 else 0.3)
-        
-        # Calculate weighted score with gating
-        has_image = image_score > 0
-        has_animation = animation_score > 0
-        
-        if has_image and has_animation:
-            # All three components present
-            base_score = (0.4 * metadata_score + 
-                         0.35 * metadata_gating_factor * image_score + 
-                         0.25 * metadata_gating_factor * animation_score)
-        elif has_image:
-            # Metadata + image
-            base_score = (0.4 * metadata_score + 
-                         0.6 * metadata_gating_factor * image_score)
-        elif has_animation:
-            # Metadata + animation  
-            base_score = (0.4 * metadata_score + 
-                         0.6 * metadata_gating_factor * animation_score)
-        else:
-            # Metadata only
-            base_score = 0.8 * metadata_score
-        
-        # Apply penalties
-        adjusted_score = base_score - gateway_penalty - dependency_penalty - chain_penalty
+        # Apply penalties (dependency gating handled by protocol scoring)
+        adjusted_score = base_score - chain_penalty
         overall_score = max(0, min(10, round(adjusted_score)))
         
-        # Determine characteristics
+        # Determine characteristics using original scores for consistency
         is_fully_onchain = (metadata_score == 10 and 
-                           (not has_image or image_score == 10) and 
-                           (not has_animation or animation_score == 10))
+                           (image_score == 0 or image_score == 10) and 
+                           (animation_score == 0 or animation_score == 10))
         
         has_external_deps = self._has_external_dependencies(token_info)
         
-        # Find weakest component
+        # Find weakest component using gated scores
         scores = {"metadata": metadata_score}
-        if has_image:
-            scores["image"] = image_score
-        if has_animation:
-            scores["animation"] = animation_score
-        if contract_metadata_score > 0:
-            scores["contract_metadata"] = contract_metadata_score
+        if gated_image_score > 0:
+            scores["image"] = gated_image_score
+        if gated_animation_score > 0:
+            scores["animation"] = gated_animation_score
+        if gated_contract_score > 0:
+            scores["contract_metadata"] = gated_contract_score
             
         weakest_component = min(scores.keys(), key=lambda k: scores[k])
         
@@ -250,11 +243,9 @@ class TrustAnalyzer:
         return PermanenceScore(
             overall_score=overall_score,
             metadata_score=metadata_score,
-            image_score=image_score,
-            animation_score=animation_score,
-            contract_metadata_score=contract_metadata_score,
-            gateway_penalty=gateway_penalty,
-            dependency_penalty=dependency_penalty,
+            image_score=gated_image_score,
+            animation_score=gated_animation_score,
+            contract_metadata_score=gated_contract_score,
             chain_penalty=chain_penalty,
             is_fully_onchain=is_fully_onchain,
             has_external_deps=has_external_deps,
@@ -262,11 +253,21 @@ class TrustAnalyzer:
             protocol_breakdown=protocol_breakdown
         )
     
-    def _get_url_protocol_score(self, url_info: Optional[UrlInfo]) -> int:
+    def _get_url_protocol_score(self, url_info: Optional[UrlInfo], gate_by_dependencies: bool = True) -> int:
         """Get protocol score for a URL, returning 0 if None"""
         if not url_info:
             return 0
-        return url_info.protocol.get_score()
+        base_score = url_info.protocol.get_score()
+        
+        # Apply dependency gating for SVG/HTML
+        if (gate_by_dependencies and url_info.external_dependencies and 
+            not url_info.external_dependencies.is_fully_onchain):
+            
+            # Gate by lowest dependency protocol score
+            dep_score = url_info.external_dependencies.min_protocol_score
+            return min(base_score, dep_score)
+        
+        return base_score
     
     def _get_url_protocol_name(self, url_info: Optional[UrlInfo]) -> str:
         """Get protocol name for a URL, returning 'none' if None"""
@@ -274,45 +275,13 @@ class TrustAnalyzer:
             return "none"
         return url_info.protocol.value
     
-    def _calculate_gateway_penalty(self, token_info: TokenInfo) -> float:
-        """Calculate penalty for using centralized gateways"""
-        penalty = 0.0
-        
-        if token_info.data_report:
-            # Check each URL for gateway usage
-            for url_info in [token_info.data_report.token_uri, token_info.data_report.image, 
-                           token_info.data_report.animation_url, token_info.data_report.external_url]:
-                if url_info and url_info.is_gateway:
-                    penalty += 1.0  # 1 point penalty per gateway dependency
-        
-        return min(penalty, 3.0)  # Cap at 3 points total penalty
-    
-    def _calculate_dependency_penalty(self, token_info: TokenInfo) -> float:
-        """Calculate penalty for external dependencies in SVG/HTML"""
-        penalty = 0.0
-        
-        if token_info.data_report:
-            # Check image dependencies
-            if (token_info.data_report.image and 
-                token_info.data_report.image.external_dependencies and
-                not token_info.data_report.image.external_dependencies.is_fully_onchain):
-                
-                dep_report = token_info.data_report.image.external_dependencies
-                penalty += (10 - dep_report.min_protocol_score) * 0.1  # Scale to 0-1 penalty
-            
-            # Check animation dependencies  
-            if (token_info.data_report.animation_url and
-                token_info.data_report.animation_url.external_dependencies and
-                not token_info.data_report.animation_url.external_dependencies.is_fully_onchain):
-                
-                dep_report = token_info.data_report.animation_url.external_dependencies
-                penalty += (10 - dep_report.min_protocol_score) * 0.1
-        
-        return min(penalty, 2.0)  # Cap at 2 points total penalty
-    
     def _calculate_chain_penalty(self) -> float:
-        """Calculate penalty for L2/sidechain dependencies"""
-        if not self.chain_info or self.chain_info.chainId == 1 or self.chain_info.isTestnet:
+        """Calculate penalty for L2/sidechain dependencies - only mainnet gets 0.0"""
+        if not self.chain_info or self.chain_info.isTestnet:
+            return 0.0
+        
+        # Only Ethereum mainnet (chainId == 1) gets no penalty
+        if self.chain_info.chainId == 1:
             return 0.0
         
         # Get L2Beat data for penalty calculation
@@ -320,7 +289,7 @@ class TrustAnalyzer:
         stage = chain_data.stage if chain_data else None
         
         # Use configurable penalty multipliers
-        return self.CHAIN_PENALTIES.get(stage, 1.5)
+        return self.CHAIN_PENALTIES.get(stage, 2.0)
     
     def _has_external_dependencies(self, token_info: TokenInfo) -> bool:
         """Check if token has external dependencies in SVG/HTML"""
@@ -494,7 +463,6 @@ class TrustAnalyzer:
         """Analyze chain-specific trust factors"""
         chain_id = self.chain_info.chainId if self.chain_info else 1
         chain_name = self.chain_info.name if self.chain_info else "Ethereum"
-        is_mainnet = chain_id == 1
         is_testnet = self.chain_info.isTestnet if self.chain_info else False
         
         # Get L2Beat data for this chain - simple stage-based analysis
@@ -525,7 +493,7 @@ class TrustAnalyzer:
         else:
             return TrustLevel.CRITICAL
     
-    def _generate_trust_assumptions(self, token_info: TokenInfo, permanence: PermanenceScore, 
+    def _generate_trust_assumptions(self, token_info: TokenInfo, _permanence: PermanenceScore, 
                                   trustlessness: TrustlessnessScore, chain_trust: ChainTrustScore) -> List[TrustAssumption]:
         """Generate specific trust assumptions following TrustProfileCard.tsx style"""
         assumptions = []
@@ -534,7 +502,6 @@ class TrustAnalyzer:
         metadata_url = token_info.data_report.token_uri if token_info.data_report else None
         image_url = token_info.data_report.image if token_info.data_report else None
         animation_url = token_info.data_report.animation_url if token_info.data_report else None
-        contract_url = token_info.contract_data_report.contract_uri if token_info.contract_data_report else None
         
         # Check if metadata is centralized (affects other components)
         metadata_protocol, metadata_is_gateway, metadata_host = self._get_protocol_and_gateway(metadata_url)
@@ -558,8 +525,8 @@ class TrustAnalyzer:
                 category="Data Storage",
                 description=description,
                 severity=AssumptionSeverity.HIGH,
-                impact="NFT metadata could become inaccessible, affecting display and value",
-                recommendation="Store metadata on IPFS or as data URI for permanence"
+                impact="NFT metadata could become inaccessible or change, affecting display and value",
+                recommendation="Store metadata on on-chain for permanence"
             ))
         
         # Image assumptions
@@ -583,8 +550,8 @@ class TrustAnalyzer:
                     category="Data Storage",
                     description=description,
                     severity=AssumptionSeverity.MEDIUM,
-                    impact="Image could become unavailable, affecting NFT appearance",
-                    recommendation="Store images on IPFS or use on-chain SVG"
+                    impact="Image could become unavailable or change, affecting NFT appearance",
+                    recommendation="Store images on-chain"
                 ))
             elif str(image_url.url).startswith('ipfs://'):
                 assumptions.append(TrustAssumption(
@@ -616,8 +583,8 @@ class TrustAnalyzer:
                     category="Data Storage",
                     description=description,
                     severity=AssumptionSeverity.MEDIUM,
-                    impact="Animation could become unavailable",
-                    recommendation="Store animations on IPFS for decentralization"
+                    impact="Animation could become unavailable or change",
+                    recommendation="Store animations on-chain"
                 ))
         
         # Contract control assumptions (ENS-enhanced)
@@ -674,13 +641,13 @@ class TrustAnalyzer:
         
         return recommendations
     
-    def _identify_key_risks(self, token_info: TokenInfo, permanence: PermanenceScore,
+    def _identify_key_risks(self, token_info: TokenInfo, _permanence: PermanenceScore,
                            trustlessness: TrustlessnessScore, chain_trust: ChainTrustScore) -> List[str]:
         """Identify top risks from trust assumptions"""
         risks = []
         
         # Get protocol info for risk identification
-        metadata_protocol, metadata_is_gateway, metadata_host = self._get_protocol_and_gateway(
+        metadata_protocol, metadata_is_gateway, _ = self._get_protocol_and_gateway(
             token_info.data_report.token_uri if token_info.data_report else None)
         
         if metadata_protocol in ["http", "https"] and not metadata_is_gateway:
@@ -694,7 +661,7 @@ class TrustAnalyzer:
         
         return risks[:3]  # Keep it simple
     
-    def _identify_strengths(self, token_info: TokenInfo, permanence: PermanenceScore,
+    def _identify_strengths(self, _token_info: TokenInfo, permanence: PermanenceScore,
                            trustlessness: TrustlessnessScore, chain_trust: ChainTrustScore) -> List[str]:
         """Identify key strengths"""
         strengths = []

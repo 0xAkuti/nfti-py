@@ -50,8 +50,6 @@ class PermanenceScore(BaseModel):
     contract_metadata_score: int  # Score for contractURI storage
     
     # Modifiers and penalties
-    gateway_penalty: float = 0.0      # Penalty for using centralized gateways
-    dependency_penalty: float = 0.0   # Penalty for external dependencies in SVG/HTML
     chain_penalty: float = 0.0        # Penalty for L2/sidechain dependencies
     
     # Analysis details
@@ -136,8 +134,6 @@ class TrustAnalysisResult(BaseModel):
                     "contract_metadata": self.permanence.contract_metadata_score
                 },
                 "penalties": {
-                    "gateway": self.permanence.gateway_penalty,
-                    "dependencies": self.permanence.dependency_penalty,
                     "chain": self.permanence.chain_penalty
                 }
             },
