@@ -67,30 +67,24 @@ class TrustAnalyzer:
         if not url:
             return False, None
         
-        # Handle native IPFS URLs - they're commonly accessed via gateways
-        if url.startswith('ipfs://'):
-            return True, 'ipfs.io'  # Most common gateway
-        
-        # Handle native Arweave URLs - they're commonly accessed via gateways  
-        if url.startswith('ar://'):
-            return True, 'arweave.net'  # Most common gateway
+        # Only detect HTTP(S) URLs that use gateway patterns
+        if not (url.startswith('http://') or url.startswith('https://')):
+            return False, None
             
         host = self._get_host_from_url(url)
         if not host:
             return False, None
         
-        # Common IPFS gateways
-        ipfs_gateways = ['ipfs.io', 'gateway.ipfs.io', 'cloudflare-ipfs.com', 'dweb.link']
-        # Common Arweave gateways  
-        arweave_gateways = ['arweave.net', 'ar.io', 'gateway.arweave.net']
+        # Detect IPFS gateways by checking for 'ipfs' in URL path or host
+        if 'ipfs' in url.lower() and ('/ipfs/' in url or 'ipfs' in host.lower()):
+            return True, host
+            
+        # Detect Arweave gateways by checking for 'arweave' or 'ar' patterns
+        if ('arweave' in url.lower() or 'arweave' in host.lower() or 
+            ('.ar' in host.lower() and len(host.split('.')) >= 2)):
+            return True, host
         
-        # Check for HTTP gateway patterns
-        is_gateway = (
-            any(gateway in host for gateway in ipfs_gateways) and '/ipfs/' in url or
-            any(gateway in host for gateway in arweave_gateways)
-        )
-        
-        return is_gateway, host if is_gateway else None
+        return False, None
     
     def _get_protocol_and_gateway(self, url_info: Optional[UrlInfo]) -> tuple[str, bool, Optional[str]]:
         """Get protocol, gateway status, and host for URL"""
@@ -468,137 +462,98 @@ class TrustAnalyzer:
     
     def _generate_trust_assumptions(self, token_info: TokenInfo, _permanence: PermanenceScore, 
                                   trustlessness: TrustlessnessScore, chain_trust: ChainTrustScore) -> List[TrustAssumption]:
-        """Generate specific trust assumptions following TrustProfileCard.tsx style"""
+        """Generate trust assumptions based on analysis findings"""
         assumptions = []
         
-        # Get URL information for each component
-        metadata_url = token_info.data_report.token_uri if token_info.data_report else None
-        image_url = token_info.data_report.image if token_info.data_report else None
-        animation_url = token_info.data_report.animation_url if token_info.data_report else None
+        # Data storage assumptions - simplified approach
+        self._add_storage_assumptions(token_info, assumptions)
         
-        # Check if metadata is centralized (affects other components)
-        metadata_protocol, metadata_is_gateway, metadata_host = self._get_protocol_and_gateway(metadata_url)
-        metadata_central = metadata_protocol in ["http", "https"] or metadata_is_gateway
-        metadata_risk_suffix = " and is also affected by metadata hosting" if metadata_central else ""
-        
-        # Metadata assumptions (following TrustProfileCard patterns)
-        if metadata_central and metadata_host:
-            if metadata_is_gateway:
-                # Determine protocol for gateway usage
-                if metadata_protocol == "ipfs" or (metadata_url and str(metadata_url.url).startswith('ipfs://')):
-                    description = f"Metadata uses IPFS via gateway {metadata_host}; relies on the gateway and IPFS pinning"
-                elif metadata_protocol == "arweave" or (metadata_url and str(metadata_url.url).startswith('ar://')):
-                    description = f"Metadata uses Arweave via gateway {metadata_host}; relies on the gateway and Arweave permanence"
-                else:
-                    description = f"Metadata uses gateway {metadata_host}; relies on the gateway service"
-            else:
-                description = f"Metadata is centralized and can change, relies on {metadata_host}"
-            
-            assumptions.append(TrustAssumption(
-                category="Data Storage",
-                description=description,
-                severity=AssumptionSeverity.HIGH,
-                impact="NFT metadata could become inaccessible or change, affecting display and value",
-                recommendation="Store metadata on on-chain for permanence"
-            ))
-        
-        # Image assumptions
-        if image_url:
-            image_protocol, image_is_gateway, image_host = self._get_protocol_and_gateway(image_url)
-            image_central = image_protocol in ["http", "https"] or image_is_gateway
-            
-            if image_central and image_host:
-                if image_is_gateway:
-                    # Determine protocol for gateway usage
-                    if image_protocol == "ipfs" or (image_url and str(image_url.url).startswith('ipfs://')):
-                        description = f"Image uses IPFS via gateway {image_host}; relies on the gateway and IPFS pinning{metadata_risk_suffix}"
-                    elif image_protocol == "arweave" or (image_url and str(image_url.url).startswith('ar://')):
-                        description = f"Image uses Arweave via gateway {image_host}; relies on the gateway and Arweave permanence{metadata_risk_suffix}"
-                    else:
-                        description = f"Image uses gateway {image_host}; relies on the gateway service{metadata_risk_suffix}"
-                else:
-                    description = f"Image is centralized and can change{metadata_risk_suffix}, relies on {image_host}"
-                
-                assumptions.append(TrustAssumption(
-                    category="Data Storage",
-                    description=description,
-                    severity=AssumptionSeverity.MEDIUM,
-                    impact="Image could become unavailable or change, affecting NFT appearance",
-                    recommendation="Store images on-chain"
-                ))
-            elif str(image_url.url).startswith('ipfs://'):
-                assumptions.append(TrustAssumption(
-                    category="Data Storage",
-                    description=f"Image relies on IPFS pinning{metadata_risk_suffix}",
-                    severity=AssumptionSeverity.LOW,
-                    impact="Image may disappear if not pinned",
-                    recommendation="Ensure reliable IPFS pinning"
-                ))
-        
-        # Animation assumptions (similar pattern)
-        if animation_url:
-            animation_protocol, animation_is_gateway, animation_host = self._get_protocol_and_gateway(animation_url)
-            animation_central = animation_protocol in ["http", "https"] or animation_is_gateway
-            
-            if animation_central and animation_host:
-                if animation_is_gateway:
-                    # Determine protocol for gateway usage
-                    if animation_protocol == "ipfs" or (animation_url and str(animation_url.url).startswith('ipfs://')):
-                        description = f"Animation uses IPFS via gateway {animation_host}; relies on the gateway and IPFS pinning{metadata_risk_suffix}"
-                    elif animation_protocol == "arweave" or (animation_url and str(animation_url.url).startswith('ar://')):
-                        description = f"Animation uses Arweave via gateway {animation_host}; relies on the gateway and Arweave permanence{metadata_risk_suffix}"
-                    else:
-                        description = f"Animation uses gateway {animation_host}; relies on the gateway service{metadata_risk_suffix}"
-                else:
-                    description = f"Animation is centralized and can change{metadata_risk_suffix}, relies on {animation_host}"
-                
-                assumptions.append(TrustAssumption(
-                    category="Data Storage",
-                    description=description,
-                    severity=AssumptionSeverity.MEDIUM,
-                    impact="Animation could become unavailable or change",
-                    recommendation="Store animations on-chain"
-                ))
-        
-        # Contract control assumptions (ENS-enhanced)
+        # Contract control assumptions
         if trustlessness.has_owner and trustlessness.owner_type != "renounced":
             owner_display = trustlessness.owner_ens if trustlessness.owner_ens else "contract owner"
             assumptions.append(TrustAssumption(
                 category="Contract Control",
-                description=f"Contract has {owner_display} as owner that might have control",
+                description=f"Contract controlled by {owner_display}",
                 severity=AssumptionSeverity.MEDIUM if trustlessness.owner_type in ["multisig", "timelock"] else AssumptionSeverity.HIGH,
                 impact="Owner could modify contract behavior or transfer ownership",
                 recommendation="Verify owner's intentions and track ownership changes"
             ))
         
-        # Proxy assumptions
+        # Proxy assumptions - NFT focused
         if trustlessness.is_upgradeable and trustlessness.proxy_type:
             assumptions.append(TrustAssumption(
                 category="Contract Control", 
-                description=f"Uses a {trustlessness.proxy_type} proxy, the implementation might be upgraded in the future",
+                description=f"Uses {trustlessness.proxy_type} proxy, tokenURI can be upgraded",
                 severity=AssumptionSeverity.HIGH,
-                impact="Contract logic could be completely changed via upgrade",
+                impact="NFT metadata access could be completely broken by contract upgrade",
                 recommendation="Monitor upgrade activities and proxy admin actions"
             ))
         
-        # Chain dependency (following L2Beat pattern)
+        # Chain dependency
         if chain_trust.chain_id != 1 and not chain_trust.is_testnet:
             if chain_trust.l2beat_stage:
-                description = f"Relies on {chain_trust.chain_name} being operational — which is {chain_trust.l2beat_stage} according to L2Beat"
+                description = f"Relies on {chain_trust.chain_name} being operational ({chain_trust.l2beat_stage} on L2Beat)"
                 severity = AssumptionSeverity.LOW if chain_trust.l2beat_stage == "Stage 2" else AssumptionSeverity.MEDIUM
             else:
-                description = f"Relies on {chain_trust.chain_name} being operational — no Stage on L2Beat!"
+                description = f"Relies on {chain_trust.chain_name} being operational (no L2Beat stage info)"
                 severity = AssumptionSeverity.HIGH
             
             assumptions.append(TrustAssumption(
                 category="Infrastructure",
                 description=description,
                 severity=severity,
-                impact="NFT becomes inaccessible if the chain experiences issues",
-                recommendation="Consider the chain's decentralization level for critical assets"
+                impact="NFT becomes inaccessible if chain experiences issues",
+                recommendation="Consider chain's decentralization level for critical assets"
             ))
         
         return assumptions
+    
+    def _add_storage_assumptions(self, token_info: TokenInfo, assumptions: List[TrustAssumption]):
+        """Add storage-related trust assumptions with simplified logic"""
+        if not token_info.data_report:
+            return
+            
+        # Check each component for centralization risks
+        components = [
+            ("metadata", token_info.data_report.token_uri, AssumptionSeverity.HIGH),
+            ("image", token_info.data_report.image, AssumptionSeverity.MEDIUM),
+            ("animation", token_info.data_report.animation_url, AssumptionSeverity.MEDIUM)
+        ]
+        
+        for component_name, url_info, severity in components:
+            if not url_info:
+                continue
+                
+            protocol, is_gateway, host = self._get_protocol_and_gateway(url_info)
+            
+            # Centralized storage risk
+            if protocol in ["http", "https"] and not is_gateway:
+                assumptions.append(TrustAssumption(
+                    category="Data Storage",
+                    description=f"NFT {component_name} hosted on centralized server {host}",
+                    severity=severity,
+                    impact=f"{component_name.title()} could become unavailable or change",
+                    recommendation="Store data on-chain or use IPFS/Arweave"
+                ))
+            
+            # Gateway dependency risk
+            elif is_gateway and host:
+                if protocol == "ipfs" or str(url_info.url).startswith('ipfs://'):
+                    assumptions.append(TrustAssumption(
+                        category="Data Storage", 
+                        description=f"NFT {component_name} uses IPFS via gateway {host}",
+                        severity=AssumptionSeverity.LOW,
+                        impact=f"{component_name.title()} depends on gateway and IPFS pinning",
+                        recommendation="Use native IPFS access or store on-chain"
+                    ))
+                elif protocol == "arweave" or str(url_info.url).startswith('ar://'):
+                    assumptions.append(TrustAssumption(
+                        category="Data Storage",
+                        description=f"NFT {component_name} uses Arweave via gateway {host}",
+                        severity=AssumptionSeverity.LOW, 
+                        impact=f"{component_name.title()} depends on gateway availability",
+                        recommendation="Use native Arweave access"
+                    ))
     
     def _generate_recommendations(self, _token_info: TokenInfo, permanence: PermanenceScore, 
                                 trustlessness: TrustlessnessScore) -> List[str]:
