@@ -39,12 +39,29 @@ async def get_leaderboard(
     for idx, (nft_key, score) in enumerate(entries):
         nft_data = await database_manager.redis.hgetall(nft_key)
         if nft_data:
+            # Extract individual scores from trust analysis
+            permanence_score = None
+            trustlessness_score = None
+            
+            try:
+                import json
+                token_info_data = json.loads(nft_data.get("token_info", "{}"))
+                trust_analysis = token_info_data.get("trust_analysis")
+                if trust_analysis:
+                    permanence_score = trust_analysis.get("permanence", {}).get("overall_score")
+                    trustlessness_score = trust_analysis.get("trustlessness", {}).get("overall_score")
+            except (json.JSONDecodeError, AttributeError, KeyError):
+                # If we can't parse trust analysis, individual scores remain None
+                pass
+            
             results.append(LeaderboardEntry(
                 rank=start + idx + 1,
                 chain_id=int(nft_data.get("chain_id", "1")),
                 contract_address=nft_data.get("contract_address", ""),
                 token_id=int(nft_data.get("token_id", "0")),
                 score=float(score),
+                permanence_score=permanence_score,
+                trustlessness_score=trustlessness_score,
                 stored_at=nft_data.get("stored_at", "")
             ))
     

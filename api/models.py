@@ -49,6 +49,8 @@ class LeaderboardEntry(BaseModel):
     contract_address: str
     token_id: int
     score: float
+    permanence_score: Optional[int] = None
+    trustlessness_score: Optional[int] = None
     stored_at: str
 
 
