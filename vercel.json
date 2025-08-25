@@ -1,0 +1,23 @@
+{
+  "builds": [
+    {
+      "src": "api/main.py",
+      "use": "@vercel/python"
+    }
+  ],
+  "routes": [
+    {
+      "src": "/(.*)",
+      "dest": "api/main.py"
+    }
+  ],
+  "env": {
+    "ENVIRONMENT": "production",
+    "DEBUG": "false"
+  },
+  "functions": {
+    "api/main.py": {
+      "maxDuration": 30
+    }
+  }
+}
