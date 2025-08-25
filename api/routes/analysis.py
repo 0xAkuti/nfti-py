@@ -9,14 +9,14 @@ from datetime import datetime
 from src.nft_inspector.client import NFTInspector
 from ..database import database_manager
 from ..dependencies import validate_address, validate_token_id
-from ..models import AnalysisRequest
+from ..models import AnalysisRequest, AnalysisResponse, ContractAnalysisResponse, CollectionStatsResponse
 from ..auth import verify_api_key
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
 
 
-@router.post("/analyze")
+@router.post("/analyze", response_model=AnalysisResponse)
 async def analyze_nft(
     request: AnalysisRequest,
     api_key: str = Depends(verify_api_key)
@@ -29,7 +29,7 @@ async def analyze_nft(
     if not request.force_refresh:
         existing = await database_manager.get_nft_analysis(request.chain_id, contract_address, token_id)
         if existing:
-            return {"data": existing.model_dump(), "from_storage": True}
+            return AnalysisResponse(data=existing, from_storage=True)
     
     # Analyze
     inspector = NFTInspector(chain_id=request.chain_id, analyze_media=True, analyze_trust=True)
@@ -40,10 +40,10 @@ async def analyze_nft(
     
     # Store
     await database_manager.store_nft_analysis(token_info)
-    return {"data": token_info.model_dump(), "from_storage": False}
+    return AnalysisResponse(data=token_info, from_storage=False)
 
 
-@router.get("/analyze/{chain_id}/{contract_address}/{token_id}")
+@router.get("/analyze/{chain_id}/{contract_address}/{token_id}", response_model=AnalysisResponse)
 async def get_nft_analysis(
     chain_id: int,
     contract_address: str, 
@@ -58,10 +58,10 @@ async def get_nft_analysis(
     if not result:
         raise HTTPException(status_code=404, detail="NFT analysis not found")
     
-    return {"data": result.model_dump()}
+    return AnalysisResponse(data=result, from_storage=True)
 
 
-@router.post("/contract/{contract_address}")
+@router.post("/contract/{contract_address}", response_model=ContractAnalysisResponse)
 async def analyze_contract(
     contract_address: str,
     chain_id: int = Query(1),
@@ -76,10 +76,10 @@ async def analyze_contract(
     if not contract_data:
         raise HTTPException(status_code=404, detail="Contract not found")
     
-    return {"data": contract_data}
+    return ContractAnalysisResponse(data=contract_data)
 
 
-@router.get("/collection/{chain_id}/{contract_address}/stats")
+@router.get("/collection/{chain_id}/{contract_address}/stats", response_model=CollectionStatsResponse)
 async def get_collection_stats(
     chain_id: int,
     contract_address: str,
@@ -93,11 +93,11 @@ async def get_collection_stats(
     if not collection_data:
         raise HTTPException(status_code=404, detail="Collection not found")
     
-    return {
-        "chain_id": int(collection_data.get("chain_id", chain_id)),
-        "contract_address": collection_data.get("contract_address", contract_address),
-        "collection_name": collection_data.get("collection_name", ""),
-        "token_count": int(collection_data.get("token_count", "0")),
-        "average_score": float(collection_data.get("average_score", "0.0")),
-        "last_updated": collection_data.get("last_updated", "")
-    }
+    return CollectionStatsResponse(
+        chain_id=int(collection_data.get("chain_id", chain_id)),
+        contract_address=collection_data.get("contract_address", contract_address),
+        collection_name=collection_data.get("collection_name", ""),
+        token_count=int(collection_data.get("token_count", "0")),
+        average_score=float(collection_data.get("average_score", "0.0")),
+        last_updated=collection_data.get("last_updated", "")
+    )

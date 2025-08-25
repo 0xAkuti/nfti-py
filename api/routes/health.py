@@ -6,11 +6,12 @@ from fastapi import APIRouter
 from datetime import datetime
 
 from ..database import database_manager
+from ..models import HealthResponse
 
 router = APIRouter()
 
 
-@router.get("/health")
+@router.get("/health", response_model=HealthResponse)
 async def health_check():
     """Health check."""
     try:
@@ -22,8 +23,8 @@ async def health_check():
     except:
         db_status = "error"
     
-    return {
-        "status": "healthy" if db_status == "connected" else "degraded",
-        "timestamp": datetime.utcnow().isoformat(),
-        "database": db_status
-    }
+    return HealthResponse(
+        status="healthy" if db_status == "connected" else "degraded",
+        timestamp=datetime.utcnow(),
+        database=db_status
+    )
