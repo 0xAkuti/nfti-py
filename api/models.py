@@ -63,13 +63,3 @@ class StatsResponse(BaseModel):
     total_analyses: int
     average_score: float
     last_updated: str
-
-
-class CollectionStatsResponse(BaseModel):
-    """Collection statistics response."""
-    chain_id: int
-    contract_address: str
-    collection_name: str
-    token_count: int
-    average_score: float
-    last_updated: str

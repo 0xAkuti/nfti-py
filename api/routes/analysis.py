@@ -9,7 +9,7 @@ from datetime import datetime
 from src.nft_inspector.client import NFTInspector
 from ..database import database_manager
 from ..dependencies import validate_address, validate_token_id
-from ..models import AnalysisRequest, AnalysisResponse, ContractAnalysisResponse, CollectionStatsResponse
+from ..models import AnalysisRequest, AnalysisResponse, ContractAnalysisResponse
 from ..auth import verify_api_key
 
 logger = logging.getLogger(__name__)
@@ -61,43 +61,30 @@ async def get_nft_analysis(
     return AnalysisResponse(data=result, from_storage=True)
 
 
-@router.post("/contract/{contract_address}", response_model=ContractAnalysisResponse)
-async def analyze_contract(
-    contract_address: str,
-    chain_id: int = Query(1),
-    api_key: str = Depends(verify_api_key)
-):
-    """Analyze contract metadata only."""
-    contract_address = validate_address(contract_address)
-    
-    inspector = NFTInspector(chain_id=chain_id, analyze_media=True, analyze_trust=True)
-    contract_data = await inspector.inspect_contract(contract_address)
-    
-    if not contract_data:
-        raise HTTPException(status_code=404, detail="Contract not found")
-    
-    return ContractAnalysisResponse(data=contract_data)
-
-
-@router.get("/collection/{chain_id}/{contract_address}/stats", response_model=CollectionStatsResponse)
-async def get_collection_stats(
+@router.get("/collection/{chain_id}/{contract_address}", response_model=AnalysisResponse)
+async def get_collection_analysis(
     chain_id: int,
     contract_address: str,
     api_key: str = Depends(verify_api_key)
 ):
-    """Get collection statistics."""
+    """Get any analyzed token from this contract."""
     contract_address = validate_address(contract_address)
-    collection_key = f"collection:{chain_id}:{contract_address}"
     
-    collection_data = await database_manager.redis.hgetall(collection_key)
-    if not collection_data:
-        raise HTTPException(status_code=404, detail="Collection not found")
+    # Find any analyzed token from this contract
+    pattern = f"nft:{chain_id}:{contract_address}:*"
+    keys = await database_manager.redis.keys(pattern)
     
-    return CollectionStatsResponse(
-        chain_id=int(collection_data.get("chain_id", chain_id)),
-        contract_address=collection_data.get("contract_address", contract_address),
-        collection_name=collection_data.get("collection_name", ""),
-        token_count=int(collection_data.get("token_count", "0")),
-        average_score=float(collection_data.get("average_score", "0.0")),
-        last_updated=collection_data.get("last_updated", "")
-    )
+    if not keys:
+        raise HTTPException(status_code=404, detail="No analyzed tokens found for this contract")
+    
+    # Extract token_id from the first key and get analysis
+    first_key = keys[0]
+    # Key format: nft:{chain_id}:{contract_address}:{token_id}
+    token_id = int(first_key.split(':')[-1])
+    
+    result = await database_manager.get_nft_analysis(chain_id, contract_address, token_id)
+    
+    if not result:
+        raise HTTPException(status_code=404, detail="Token analysis data corrupted")
+    
+    return AnalysisResponse(data=result, from_storage=True)
