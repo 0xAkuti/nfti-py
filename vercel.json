@@ -12,8 +12,7 @@
     }
   ],
   "env": {
-    "ENVIRONMENT": "production",
-    "DEBUG": "false",
+    "ENVIRONMENT": "debug",
     "DATABASE_BACKEND": "blob"
   }
 }
