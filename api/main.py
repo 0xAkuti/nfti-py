@@ -29,7 +29,7 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(
     title="NFT Inspector API",
-    docs_url="/docs" if settings.ENVIRONMENT == "development" else None,
+    docs_url="/docs", # if settings.ENVIRONMENT == "development" else None,
     lifespan=lifespan
 )
 
