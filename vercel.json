@@ -16,10 +16,5 @@
   "env": {
     "ENVIRONMENT": "debug",
     "DATABASE_BACKEND": "blob"
-  },
-  "functions": {
-    "api/**": {
-      "runtime": "python3.12"
-    }
   }
 }
