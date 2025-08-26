@@ -2,9 +2,8 @@
 Health check endpoint.
 """
 
-from time import timezone
 from fastapi import APIRouter
-from datetime import datetime
+from datetime import datetime, timezone
 
 from ..database import get_database_manager
 from ..models import HealthResponse
@@ -21,10 +20,10 @@ async def health_check():
         await db_manager.get_global_stats()
         db_status = "connected"
     except Exception as e:
-        db_status = "error"
+        db_status = f"error: {str(e)}"
     
     return HealthResponse(
         status="healthy" if db_status == "connected" else "degraded",
-        timestamp=datetime.now(timezone.utc).isoformat(),
+        timestamp=datetime.now(timezone.utc),
         database=db_status
     )
