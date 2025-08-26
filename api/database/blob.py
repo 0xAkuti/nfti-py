@@ -112,7 +112,7 @@ class BlobManager(DatabaseManagerInterface):
             
             # Prepare storage data with metadata
             storage_data = {
-                "token_info": token_info.model_dump(mode='json'),
+                "token_info": token_info.model_dump(mode='json', exclude_defaults=True),
                 "stored_at": datetime.now(timezone.utc).isoformat(),
                 "analysis_version": token_info.trust_analysis.analysis_version if token_info.trust_analysis else "1.0",
                 "chain_id": chain_id,
@@ -341,7 +341,7 @@ class BlobManager(DatabaseManagerInterface):
                         # Get full NFT data
                         token_info = await self.get_nft_analysis(entry_chain_id, entry_contract, entry_token_id)
                         if token_info:
-                            token_info_data = token_info.model_dump(mode='json')
+                            token_info_data = token_info.model_dump(mode='json', exclude_defaults=True)
                             
                             # Apply filters
                             if self._matches_filters(token_info_data, filters):
