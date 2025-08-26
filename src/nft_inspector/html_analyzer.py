@@ -44,7 +44,6 @@ class HtmlAnalyzer:
                 try:
                     url_info = await url_analyzer.analyze_media(url)
                     external_resource = ExternalResource(
-                        url=url,
                         element_type=element_type,
                         attribute=attribute,
                         url_info=url_info
@@ -59,7 +58,6 @@ class HtmlAnalyzer:
                         error=str(e)
                     )
                     external_resource = ExternalResource(
-                        url=url,
                         element_type=element_type,
                         attribute=attribute,
                         url_info=url_info

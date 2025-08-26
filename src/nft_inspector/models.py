@@ -13,7 +13,6 @@ class NFTAttribute(BaseModel):
 
 class ExternalResource(BaseModel):
     """Represents an external resource found in SVG or HTML content"""
-    url: WeakTokenURI
     element_type: str  # e.g., "image", "use", "script", "style", "img", "iframe"
     attribute: str     # e.g., "href", "xlink:href", "src", "data"
     url_info: 'UrlInfo'
