@@ -69,11 +69,18 @@ class BlobManager(DatabaseManagerInterface):
     async def _get_blob_json(self, path: str) -> Optional[Dict[str, Any]]:
         """Get and parse JSON blob, returns None if not found."""
         try:
-            # Use download_file to get blob content
-            content = await asyncio.to_thread(vercel_blob.download_file, path)
-            if content:
-                return json.loads(content)
-            return None
+            # Use head to check if blob exists
+            blob_info = await asyncio.to_thread(vercel_blob.head, path)
+            if not blob_info:
+                return None
+                
+            # Use the blob URL to fetch content
+            import httpx
+            async with httpx.AsyncClient() as client:
+                response = await client.get(blob_info['url'])
+                if response.status_code == 200:
+                    return json.loads(response.text)
+                return None
         except Exception as e:
             logger.debug(f"Blob not found or error reading {path}: {e}")
             return None
