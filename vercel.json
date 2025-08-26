@@ -11,8 +11,15 @@
       "dest": "api/main.py"
     }
   ],
+  "installCommand": "curl -LsSf https://astral.sh/uv/install.sh | sh -s -- -y",
+  "devCommand": "$HOME/.local/bin/uv run uvicorn api.main:app --reload --host 0.0.0.0 --port ${PORT:-3000}",
   "env": {
     "ENVIRONMENT": "debug",
     "DATABASE_BACKEND": "blob"
+  },
+  "functions": {
+    "api/**": {
+      "runtime": "python3.12"
+    }
   }
 }
