@@ -8,7 +8,7 @@ from fastapi.middleware.cors import CORSMiddleware
 import logging
 
 from .config import settings
-from .database import database_manager
+from .database import initialize_database, close_database
 from .routes import analysis, leaderboard, health
 
 logging.basicConfig(level=logging.INFO)
@@ -18,10 +18,13 @@ logger = logging.getLogger(__name__)
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Startup/shutdown."""
-    await database_manager.initialize()
-    logger.info("Database connected")
+    # Initialize database with configured backend
+    backend = settings.DATABASE_BACKEND
+    config = settings.get_database_config()
+    await initialize_database(backend, **config)
+    logger.info(f"Database connected using {backend} backend")
     yield
-    await database_manager.close()
+    await close_database()
 
 
 app = FastAPI(

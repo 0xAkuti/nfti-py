@@ -7,7 +7,7 @@ import logging
 from datetime import datetime
 
 from src.nft_inspector.client import NFTInspector
-from ..database import database_manager
+from ..database import get_database_manager
 from ..dependencies import validate_address, validate_token_id
 from ..models import AnalysisRequest, AnalysisResponse, ContractAnalysisResponse
 from ..auth import verify_api_key
@@ -27,7 +27,7 @@ async def analyze_nft(
     
     # Check if already exists
     if not request.force_refresh:
-        existing = await database_manager.get_nft_analysis(request.chain_id, contract_address, token_id)
+        existing = await get_database_manager().get_nft_analysis(request.chain_id, contract_address, token_id)
         if existing:
             return AnalysisResponse(data=existing, from_storage=True)
     
@@ -39,7 +39,7 @@ async def analyze_nft(
         raise HTTPException(status_code=404, detail="NFT not found")
     
     # Store
-    await database_manager.store_nft_analysis(token_info)
+    await get_database_manager().store_nft_analysis(token_info)
     return AnalysisResponse(data=token_info, from_storage=False)
 
 
@@ -54,7 +54,7 @@ async def get_nft_analysis(
     contract_address = validate_address(contract_address)
     token_id = validate_token_id(token_id)
     
-    result = await database_manager.get_nft_analysis(chain_id, contract_address, token_id)
+    result = await get_database_manager().get_nft_analysis(chain_id, contract_address, token_id)
     if not result:
         raise HTTPException(status_code=404, detail="NFT analysis not found")
     
@@ -72,7 +72,13 @@ async def get_collection_analysis(
     
     # Find any analyzed token from this contract
     pattern = f"nft:{chain_id}:{contract_address}:*"
-    keys = await database_manager.redis.keys(pattern)
+    db_manager = get_database_manager()
+    
+    # Use the backend-agnostic method to find contract tokens
+    keys = await db_manager.find_contract_tokens(chain_id, contract_address)
+    
+    if not keys:
+        raise HTTPException(status_code=404, detail="No analyzed tokens found for this contract")
     
     if not keys:
         raise HTTPException(status_code=404, detail="No analyzed tokens found for this contract")
@@ -80,9 +86,12 @@ async def get_collection_analysis(
     # Extract token_id from the first key and get analysis
     first_key = keys[0]
     # Key format: nft:{chain_id}:{contract_address}:{token_id}
-    token_id = int(first_key.split(':')[-1])
+    try:
+        token_id = int(first_key.split(':')[-1])
+    except (IndexError, ValueError):
+        raise HTTPException(status_code=500, detail="Invalid token key format")
     
-    result = await database_manager.get_nft_analysis(chain_id, contract_address, token_id)
+    result = await get_database_manager().get_nft_analysis(chain_id, contract_address, token_id)
     
     if not result:
         raise HTTPException(status_code=404, detail="Token analysis data corrupted")

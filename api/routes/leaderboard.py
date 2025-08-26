@@ -4,9 +4,11 @@ Leaderboard endpoints.
 
 from fastapi import APIRouter, Depends, Query
 from typing import Optional
+import json
 import logging
+from datetime import datetime
 
-from ..database import database_manager
+from ..database import get_database_manager
 from ..models import LeaderboardResponse, LeaderboardEntry, PaginationInfo, StatsResponse
 from ..auth import verify_api_key
 
@@ -33,11 +35,44 @@ async def get_leaderboard(
         leaderboard_key = "leaderboard:global"
     
     # Get entries from Redis sorted set
-    entries = await database_manager.redis.zrevrange(leaderboard_key, start, end, withscores=True)
+    db_manager = get_database_manager()
+    # Use the generic leaderboard interface
+    scope = "chain" if chain_id else "global"
+    entries = await db_manager.get_leaderboard(
+        scope=scope,
+        chain_id=chain_id,
+        start=start,
+        end=end,
+        reverse=True
+    )
     
     results = []
     for idx, (nft_key, score) in enumerate(entries):
-        nft_data = await database_manager.redis.hgetall(nft_key)
+        # Parse NFT key to get components
+        try:
+            parts = nft_key.split(':')
+            if len(parts) >= 4:
+                entry_chain_id = int(parts[1])
+                entry_contract = parts[2]
+                entry_token_id = int(parts[3])
+                
+                # Get the full token info
+                token_info = await db_manager.get_nft_analysis(entry_chain_id, entry_contract, entry_token_id)
+                if not token_info:
+                    continue
+                
+                # Convert to dict format expected by the rest of the code
+                nft_data = {
+                    "chain_id": str(entry_chain_id),
+                    "contract_address": entry_contract.lower(),
+                    "token_id": str(entry_token_id),
+                    "stored_at": datetime.now().isoformat(),
+                    "token_info": json.dumps(token_info.model_dump(mode='json'))
+                }
+            else:
+                continue
+        except (ValueError, IndexError):
+            continue
         if nft_data:
             # Extract individual scores from trust analysis
             permanence_score = None
@@ -78,11 +113,11 @@ async def get_leaderboard(
 @router.get("/stats", response_model=StatsResponse)
 async def get_stats(api_key: str = Depends(verify_api_key)):
     """Get global statistics."""
-    stats = await database_manager.redis.hgetall("stats:global")
+    stats_data = await get_database_manager().get_global_stats()
     return StatsResponse(
-        total_analyses=int(stats.get("total_analyses", "0")),
-        average_score=float(stats.get("average_score", "0.0")),
-        last_updated=stats.get("last_updated", "")
+        total_analyses=stats_data.get("total_analyses", 0),
+        average_score=stats_data.get("average_score", 0.0),
+        last_updated=stats_data.get("last_updated", "")
     )
 
 
