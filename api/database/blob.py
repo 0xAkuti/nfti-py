@@ -90,11 +90,22 @@ class BlobManager(DatabaseManagerInterface):
         """Store JSON data as blob."""
         try:
             json_content = json.dumps(data, indent=2)
+            # Base options for all JSON writes
+            options = {
+                'content_type': 'application/json',
+                # Keep deterministic keys by default (no random suffix)
+                'add_random_suffix': False,
+            }
+            # Apply overwrite and cache headers only for stats/leaderboard blobs
+            if path.startswith("leaderboard/") or path.startswith("stats/"):
+                options['allow_overwrite'] = True
+                options['cache_control_max_age'] = 60
+
             response = await asyncio.to_thread(
                 vercel_blob.put, 
                 path, 
                 json_content.encode('utf-8'),
-                {'content_type': 'application/json'}
+                options
             )
             return response is not None
         except Exception as e:
