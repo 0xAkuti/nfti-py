@@ -44,7 +44,7 @@ class PaginationInfo(BaseModel):
 
 class LeaderboardEntry(BaseModel):
     """Individual leaderboard entry."""
-    rank: int
+    rank: Optional[int] = None
     chain_id: int
     contract_address: str
     token_id: int

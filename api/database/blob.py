@@ -11,6 +11,7 @@ import vercel_blob
 
 from src.nft_inspector.models import TokenInfo
 from .base import DatabaseManagerInterface
+from ..models import LeaderboardEntry
 
 logger = logging.getLogger(__name__)
 
@@ -181,34 +182,45 @@ class BlobManager(DatabaseManagerInterface):
             raise RuntimeError(f"Failed to retrieve analysis: {e}")
     
     async def _update_leaderboards(self, chain_id: int, token_info: TokenInfo, score: float):
-        """Update global and chain-specific leaderboards."""
+        """Update global and chain-specific leaderboards using LeaderboardEntry."""
         try:
-            # Create NFT key for consistency with Redis format
-            from web3 import Web3
-            checksum_address = Web3.to_checksum_address(token_info.contract_address)
-            nft_key = f"nft:{chain_id}:{checksum_address}:{token_info.token_id}"
-            
+            # Extract individual scores if present
+            permanence_score = None
+            trustlessness_score = None
+            try:
+                permanence = getattr(token_info.trust_analysis, 'permanence', None) if token_info.trust_analysis else None
+                if permanence and hasattr(permanence, 'overall_score'):
+                    permanence_score = permanence.overall_score
+            except Exception:
+                pass
+            try:
+                trustlessness = getattr(token_info.trust_analysis, 'trustlessness', None) if token_info.trust_analysis else None
+                if trustlessness and hasattr(trustlessness, 'overall_score'):
+                    trustlessness_score = trustlessness.overall_score
+            except Exception:
+                pass
+            now_iso = datetime.now(timezone.utc).isoformat()
+            item = LeaderboardEntry(
+                chain_id=chain_id,
+                contract_address=token_info.contract_address.lower(),
+                token_id=token_info.token_id,
+                score=float(score),
+                permanence_score=permanence_score,
+                trustlessness_score=trustlessness_score,
+                stored_at=now_iso,
+            )
+
             # Update global leaderboard
-            await self._update_single_leaderboard("global", None, nft_key, score, {
-                "chain_id": chain_id,
-                "contract_address": token_info.contract_address.lower(),
-                "token_id": token_info.token_id,
-                "stored_at": datetime.now(timezone.utc).isoformat()
-            })
-            
-            # Update chain-specific leaderboard  
-            await self._update_single_leaderboard("chain", chain_id, nft_key, score, {
-                "chain_id": chain_id,
-                "contract_address": token_info.contract_address.lower(),
-                "token_id": token_info.token_id,
-                "stored_at": datetime.now(timezone.utc).isoformat()
-            })
+            await self._update_single_leaderboard("global", None, item)
+
+            # Update chain-specific leaderboard
+            await self._update_single_leaderboard("chain", chain_id, item)
             
         except Exception as e:
             logger.error(f"Failed to update leaderboards: {e}")
     
-    async def _update_single_leaderboard(self, scope: str, chain_id: Optional[int], nft_key: str, score: float, metadata: Dict[str, Any]):
-        """Update a single leaderboard with retry logic."""
+    async def _update_single_leaderboard(self, scope: str, chain_id: Optional[int], item: LeaderboardEntry):
+        """Update a single leaderboard with retry logic using a typed item."""
         max_retries = 3
         for attempt in range(max_retries):
             try:
@@ -218,15 +230,21 @@ class BlobManager(DatabaseManagerInterface):
                 leaderboard_data = await self._get_blob_json(leaderboard_path) or {"entries": []}
                 entries = leaderboard_data.get("entries", [])
                 
-                # Remove existing entry if it exists
-                entries = [entry for entry in entries if entry.get("nft_key") != nft_key]
-                
-                # Add new entry
-                entries.append({
-                    "nft_key": nft_key,
-                    "score": score,
-                    **metadata
-                })
+                # Remove existing entry for same contract/token
+                def _matches(e: Dict[str, Any]) -> bool:
+                    try:
+                        return (
+                            int(e.get("chain_id", -1)) == item.chain_id and
+                            str(e.get("contract_address", "")).lower() == item.contract_address.lower() and
+                            int(e.get("token_id", -1)) == item.token_id
+                        )
+                    except Exception:
+                        return False
+
+                entries = [e for e in entries if not _matches(e)]
+
+                # Append validated item dump
+                entries.append(item.model_dump(mode='json', exclude_defaults=True))
                 
                 # Sort by score (descending)
                 entries.sort(key=lambda x: x.get("score", 0), reverse=True)
@@ -249,53 +267,49 @@ class BlobManager(DatabaseManagerInterface):
                     raise e
                 await asyncio.sleep(0.1 * (attempt + 1))  # Exponential backoff
     
-    async def get_leaderboard(
+    # Tuple-based leaderboard removed; use get_leaderboard_items
+
+    async def get_leaderboard_items(
         self,
         scope: str = "global",
         chain_id: Optional[int] = None,
         start: int = 0,
         end: int = -1,
         reverse: bool = True
-    ) -> List[Tuple[str, float]]:
-        """
-        Get leaderboard entries.
-        
-        Args:
-            scope: Leaderboard scope ("global", "chain")
-            chain_id: Chain ID for chain-specific leaderboard
-            start: Start index
-            end: End index (-1 for all)
-            reverse: True for highest scores first
-            
-        Returns:
-            List of (nft_key, score) tuples
-        """
+    ) -> List[LeaderboardEntry]:
+        """Return lightweight leaderboard items from stored leaderboard JSON."""
         try:
             if not self.initialized:
                 raise RuntimeError("Database not initialized")
-            
+
             leaderboard_path = self._get_leaderboard_path(scope, chain_id)
             leaderboard_data = await self._get_blob_json(leaderboard_path)
-            
             if not leaderboard_data:
                 return []
-            
+
             entries = leaderboard_data.get("entries", [])
-            
-            # Sort if needed (should already be sorted, but ensure)
+
+            # Ensure sort order if requested
             entries.sort(key=lambda x: x.get("score", 0), reverse=reverse)
-            
-            # Apply slicing
+
+            # Apply slicing like start/end
             if end == -1:
-                entries = entries[start:]
+                sliced = entries[start:]
             else:
-                entries = entries[start:end+1]
-            
-            # Convert to expected format
-            return [(entry.get("nft_key", ""), entry.get("score", 0.0)) for entry in entries]
-            
+                sliced = entries[start:end+1]
+
+            results: List[LeaderboardEntry] = []
+            for entry in sliced:
+                try:
+                    # Load via Pydantic for validation/coercion
+                    item = LeaderboardEntry.model_validate(entry)
+                    results.append(item)
+                except Exception:
+                    continue
+
+            return results
         except Exception as e:
-            logger.error(f"Failed to get leaderboard: {e}")
+            logger.error(f"Failed to get lightweight leaderboard: {e}")
             raise RuntimeError(f"Failed to get leaderboard: {e}")
     
     async def get_leaderboard_with_filters(

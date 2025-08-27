@@ -7,6 +7,7 @@ from typing import Optional, List, Dict, Any, Tuple
 from datetime import datetime
 
 from src.nft_inspector.models import TokenInfo
+from ..models import LeaderboardEntry
 
 
 class DatabaseManagerInterface(ABC):
@@ -51,48 +52,22 @@ class DatabaseManagerInterface(ABC):
         pass
 
     @abstractmethod
-    async def get_leaderboard(
+    async def get_leaderboard_items(
         self,
         scope: str = "global",
         chain_id: Optional[int] = None,
         start: int = 0,
         end: int = -1,
         reverse: bool = True
-    ) -> List[Tuple[str, float]]:
+    ) -> List[LeaderboardEntry]:
         """
-        Get leaderboard entries.
-        
-        Args:
-            scope: Leaderboard scope ("global", "chain")
-            chain_id: Chain ID for chain-specific leaderboard
-            start: Start index
-            end: End index (-1 for all)
-            reverse: True for highest scores first
-            
-        Returns:
-            List of (nft_key, score) tuples
+        Get lightweight leaderboard items without loading full token details.
+        Each item contains: chain_id, contract_address, token_id, score,
+        permanence_score, trustlessness_score, stored_at.
         """
         pass
 
-    @abstractmethod
-    async def get_leaderboard_with_filters(
-        self,
-        filters: Dict[str, Any],
-        start: int = 0,
-        count: int = 50
-    ) -> List[Dict[str, Any]]:
-        """
-        Get filtered leaderboard entries with full NFT data.
-        
-        Args:
-            filters: Filter parameters
-            start: Start index
-            count: Number of entries to return
-            
-        Returns:
-            List of NFT data dictionaries with scores
-        """
-        pass
+    # Legacy detailed leaderboard and filter methods removed; use get_leaderboard_items
 
     @abstractmethod
     async def find_existing_token_id(self, chain_id: int, contract_address: str) -> Optional[int]:

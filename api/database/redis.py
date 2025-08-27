@@ -10,6 +10,7 @@ import redis.asyncio as redis
 
 from src.nft_inspector.models import TokenInfo
 from .base import DatabaseManagerInterface
+from ..models import LeaderboardEntry
 
 logger = logging.getLogger(__name__)
 
@@ -86,13 +87,25 @@ class RedisManager(DatabaseManagerInterface):
             collection_key = self._get_collection_key(chain_id, token_info.contract_address)
             
             # Prepare storage data with metadata
+            token_info_json = token_info.model_dump(mode='json')
+            # Extract individual scores from trust analysis for lightweight reads
+            try:
+                ta = token_info_json.get("trust_analysis") or {}
+                permanence_score = (ta.get("permanence") or {}).get("overall_score")
+                trustlessness_score = (ta.get("trustlessness") or {}).get("overall_score")
+            except Exception:
+                permanence_score = None
+                trustlessness_score = None
+
             storage_data = {
-                "token_info": token_info.model_dump(mode='json'),
+                "token_info": token_info_json,
                 "stored_at": datetime.now(timezone.utc).isoformat(),
                 "analysis_version": token_info.trust_analysis.analysis_version if token_info.trust_analysis else "1.0",
                 "chain_id": chain_id,
                 "contract_address": token_info.contract_address.lower(),
-                "token_id": token_info.token_id
+                "token_id": token_info.token_id,
+                "permanence_score": permanence_score,
+                "trustlessness_score": trustlessness_score,
             }
             
             # Use pipeline for atomic operations
@@ -233,111 +246,65 @@ class RedisManager(DatabaseManagerInterface):
         except Exception as e:
             logger.error(f"Failed to update global stats: {e}")
     
-    async def get_leaderboard(
+    # Detailed tuple-based leaderboard removed; use get_leaderboard_items
+
+    async def get_leaderboard_items(
         self,
         scope: str = "global",
         chain_id: Optional[int] = None,
         start: int = 0,
         end: int = -1,
         reverse: bool = True
-    ) -> List[Tuple[str, float]]:
-        """
-        Get leaderboard entries.
-        
-        Args:
-            scope: Leaderboard scope ("global", "chain")
-            chain_id: Chain ID for chain-specific leaderboard
-            start: Start index
-            end: End index (-1 for all)
-            reverse: True for highest scores first
-            
-        Returns:
-            List of (nft_key, score) tuples
-        """
+    ) -> List[LeaderboardEntry]:
+        """Return lightweight leaderboard items using stored metadata only."""
         try:
             if not self.redis:
                 raise RuntimeError("Database not initialized")
-            
+
             leaderboard_key = self._get_leaderboard_key(scope, chain_id)
-            
+
             if reverse:
-                # Highest scores first
                 entries = await self.redis.zrevrange(leaderboard_key, start, end, withscores=True)
             else:
-                # Lowest scores first
                 entries = await self.redis.zrange(leaderboard_key, start, end, withscores=True)
-            
-            return [(key.decode() if isinstance(key, bytes) else key, float(score)) for key, score in entries]
-            
+
+            results: List[LeaderboardEntry] = []
+            for key, score in entries:
+                nft_key = key.decode() if isinstance(key, bytes) else key
+                # Fetch minimal metadata from the NFT hash without loading token_info
+                nft_hash = await self.redis.hgetall(nft_key)
+                if not nft_hash:
+                    continue
+                try:
+                    chain_val = int(nft_hash.get("chain_id", "0"))
+                    contract_val = (nft_hash.get("contract_address") or "").lower()
+                    token_val = int(nft_hash.get("token_id", "0"))
+                    stored_at = nft_hash.get("stored_at", "")
+
+                    # Prefer precomputed individual scores (avoid loading full token_info)
+                    permanence_score = nft_hash.get("permanence_score")
+                    trustlessness_score = nft_hash.get("trustlessness_score")
+                    permanence_score = int(permanence_score) if permanence_score not in (None, "", "null") else None
+                    trustlessness_score = int(trustlessness_score) if trustlessness_score not in (None, "", "null") else None
+
+                    results.append(LeaderboardEntry(
+                        chain_id=chain_val,
+                        contract_address=contract_val,
+                        token_id=token_val,
+                        score=float(score),
+                        permanence_score=permanence_score,
+                        trustlessness_score=trustlessness_score,
+                        stored_at=stored_at,
+                    ))
+                except Exception:
+                    continue
+
+            return results
         except Exception as e:
-            logger.error(f"Failed to get leaderboard: {e}")
+            logger.error(f"Failed to get lightweight leaderboard: {e}")
             raise RuntimeError(f"Failed to get leaderboard: {e}")
     
-    async def get_leaderboard_with_filters(
-        self,
-        filters: Dict[str, Any],
-        start: int = 0,
-        count: int = 50
-    ) -> List[Dict[str, Any]]:
-        """
-        Get filtered leaderboard entries with full NFT data.
-        
-        Args:
-            filters: Filter parameters
-            start: Start index
-            count: Number of entries to return
-            
-        Returns:
-            List of NFT data dictionaries with scores
-        """
-        try:
-            if not self.redis:
-                raise RuntimeError("Database not initialized")
-            
-            # Determine leaderboard scope
-            scope = "global"
-            chain_id = filters.get("chain_id")
-            if chain_id:
-                scope = "chain"
-            
-            # Get leaderboard entries
-            leaderboard_entries = await self.get_leaderboard(
-                scope=scope,
-                chain_id=chain_id,
-                start=start,
-                end=start + count - 1
-            )
-            
-            # Get full NFT data for each entry
-            results = []
-            for nft_key, score in leaderboard_entries:
-                try:
-                    nft_data = await self.redis.hgetall(nft_key)
-                    if nft_data:
-                        token_info_data = json.loads(nft_data.get("token_info", "{}"))
-                        
-                        # Apply additional filters
-                        if self._matches_filters(token_info_data, filters):
-                            entry = {
-                                "nft_key": nft_key,
-                                "score": score,
-                                "chain_id": int(nft_data.get("chain_id", "1")),
-                                "contract_address": nft_data.get("contract_address", ""),
-                                "token_id": int(nft_data.get("token_id", "0")),
-                                "stored_at": nft_data.get("stored_at", ""),
-                                "token_info": token_info_data
-                            }
-                            results.append(entry)
-                            
-                except Exception as e:
-                    logger.warning(f"Failed to process leaderboard entry {nft_key}: {e}")
-                    continue
-            
-            return results
-            
-        except Exception as e:
-            logger.error(f"Failed to get filtered leaderboard: {e}")
-            raise RuntimeError(f"Failed to get leaderboard: {e}")
+    # Filtered leaderboard removed; consumers should filter client-side or extend items
     
     def _matches_filters(self, token_info_data: Dict[str, Any], filters: Dict[str, Any]) -> bool:
         """Check if token info matches the provided filters."""
