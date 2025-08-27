@@ -381,8 +381,8 @@ class RedisManager(DatabaseManagerInterface):
             logger.warning(f"Error applying filters: {e}")
             return False
     
-    async def find_contract_tokens(self, chain_id: int, contract_address: str) -> List[str]:
-        """Find Redis keys for any analyzed tokens for a contract."""
+    async def find_existing_token_id(self, chain_id: int, contract_address: str) -> Optional[int]:
+        """Return a token id for the contract if one exists in Redis."""
         try:
             if not self.redis:
                 raise RuntimeError("Database not initialized")
@@ -391,11 +391,14 @@ class RedisManager(DatabaseManagerInterface):
             checksum_address = Web3.to_checksum_address(contract_address)
             pattern = f"nft:{chain_id}:{checksum_address}:*"
             keys = await self.redis.keys(pattern)
-            return keys
+            if not keys:
+                return None
+            first_key = keys[0]
+            return int(first_key.split(':')[-1])
             
         except Exception as e:
             logger.error(f"Failed to find contract tokens: {e}")
-            return []
+            return None
     
     async def get_global_stats(self) -> Dict[str, Any]:
         """Get global statistics."""

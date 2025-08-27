@@ -77,19 +77,12 @@ async def get_collection_analysis(
     db_manager = await get_database_manager_async()
     
     # Use the backend-agnostic method to find contract tokens
-    keys = await db_manager.find_contract_tokens(chain_id, contract_address)
+    token_id = await db_manager.find_existing_token_id(chain_id, contract_address)
     
-    if not keys:
+    if not token_id:
         raise HTTPException(status_code=404, detail="No analyzed tokens found for this contract")
     
-    # Extract token_id from the first key and get analysis
-    first_key = keys[0]
-    # Key format: nft:{chain_id}:{contract_address}:{token_id}
-    try:
-        token_id = int(first_key.split(':')[-1])
-    except (IndexError, ValueError):
-        raise HTTPException(status_code=500, detail="Invalid token key format")
-    
+    # Get analysis
     result = await db_manager.get_nft_analysis(chain_id, contract_address, token_id)
     
     if not result:

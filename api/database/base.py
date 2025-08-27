@@ -95,15 +95,15 @@ class DatabaseManagerInterface(ABC):
         pass
 
     @abstractmethod
-    async def find_contract_tokens(self, chain_id: int, contract_address: str) -> List[str]:
-        """Find keys/identifiers for analyzed tokens of a contract.
+    async def find_existing_token_id(self, chain_id: int, contract_address: str) -> Optional[int]:
+        """Find a token id for analyzed tokens of a contract.
         
         Args:
             chain_id: Blockchain ID
             contract_address: Contract address
             
         Returns:
-            List of token keys/identifiers
+            Token id or None if not found
         """
         pass
 

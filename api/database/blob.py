@@ -476,25 +476,91 @@ class BlobManager(DatabaseManagerInterface):
                     raise e
                 await asyncio.sleep(0.1 * (attempt + 1))  # Exponential backoff
     
-    async def find_contract_tokens(self, chain_id: int, contract_address: str) -> List[str]:
-        """Find any analyzed tokens for a contract (blob backend specific method)."""
+    async def find_existing_token_id(self, chain_id: int, contract_address: str) -> Optional[int]:
+        """Return a token id for the contract if one exists in storage.
+
+        Strategy:
+        1) Check chain leaderboard entries for a matching contract and return its token_id
+        2) Fallback: list blobs and filter by nft/{chain}/{checksum_address}/ prefix, parse filename
+        """
         try:
-            # For blob storage, we need to list blobs and filter by pattern
-            # This is a simplified implementation - in a real system you might 
-            # maintain an index of contracts
+            if not self.initialized:
+                raise RuntimeError("Database not initialized")
+
             from web3 import Web3
+            from urllib.parse import urlparse
+
             checksum_address = Web3.to_checksum_address(contract_address)
+
+            # 1) Try chain-specific leaderboard
+            try:
+                leaderboard_path = self._get_leaderboard_path("chain", chain_id)
+                leaderboard = await self._get_blob_json(leaderboard_path) or {}
+                for entry in leaderboard.get("entries", []):
+                    # Prefer explicit fields if present
+                    entry_addr = (entry.get("contract_address") or "").lower()
+                    if entry_addr == checksum_address.lower():
+                        token_id_val = entry.get("token_id")
+                        if isinstance(token_id_val, int):
+                            return token_id_val
+                        # Fallback: parse from nft_key if present
+                        nft_key = entry.get("nft_key") or ""
+                        parts = nft_key.split(":")
+                        if len(parts) >= 4 and parts[2].lower() == checksum_address.lower():
+                            try:
+                                return int(parts[3])
+                            except ValueError:
+                                pass
+            except Exception:
+                # Ignore leaderboard errors and fallback to listing
+                pass
+
+            # 2) Fallback to listing blobs and filtering by prefix
             prefix = f"nft/{chain_id}/{checksum_address}/"
-            
-            # List blobs with the contract prefix
-            # This is a limitation of current vercel_blob SDK - it doesn't support prefix filtering
-            # For now, we'll return empty list and let the analysis route handle it gracefully
-            logger.warning(f"Contract token search not fully implemented for blob backend: {prefix}")
-            return []
-            
+
+            def extract_path(blob_item: Dict[str, Any]) -> Optional[str]:
+                path = blob_item.get("pathname") or blob_item.get("key") or blob_item.get("path")
+                if not path:
+                    url = blob_item.get("url")
+                    if url:
+                        return urlparse(url).path.lstrip("/")
+                return path
+
+            blobs = None
+            try:
+                # Try with prefix support if available
+                blobs = await asyncio.to_thread(vercel_blob.list, {"prefix": prefix, "limit": "1000"})
+            except Exception:
+                try:
+                    # Without prefix param, list a larger set and filter client-side
+                    blobs = await asyncio.to_thread(vercel_blob.list, {"limit": "1000"})
+                except Exception:
+                    blobs = []
+
+            # Some SDKs return {"blobs": [...]}
+            if isinstance(blobs, dict) and "blobs" in blobs:
+                blobs_iter = blobs.get("blobs") or []
+            else:
+                blobs_iter = blobs or []
+
+            for item in blobs_iter:
+                try:
+                    path = extract_path(item) or ""
+                    if not path.startswith(prefix):
+                        continue
+                    filename = path.rsplit("/", 1)[-1]
+                    if not filename.endswith(".json"):
+                        continue
+                    token_str = filename[:-5]
+                    return int(token_str)
+                except Exception:
+                    continue
+
+            return None
+
         except Exception as e:
             logger.error(f"Failed to find contract tokens: {e}")
-            return []
+            return None
     
     async def get_global_stats(self) -> Dict[str, Any]:
         """Get global statistics."""
