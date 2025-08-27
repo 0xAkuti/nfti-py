@@ -5,7 +5,7 @@ Health check endpoint.
 from fastapi import APIRouter
 from datetime import datetime, timezone
 
-from ..database import get_database_manager
+from ..database import get_database_manager_async
 from ..models import HealthResponse
 
 router = APIRouter()
@@ -15,7 +15,7 @@ router = APIRouter()
 async def health_check():
     """Health check."""
     try:
-        db_manager = get_database_manager()
+        db_manager = await get_database_manager_async()
         # Try to get stats as a health check for any backend
         await db_manager.get_global_stats()
         db_status = "connected"

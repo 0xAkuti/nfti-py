@@ -9,8 +9,7 @@ from .database import (
     create_database_manager,
     initialize_database,
     close_database,
-    get_database_manager,
-    database_manager
+    get_database_manager_async,
 )
 
 # For backward compatibility, maintain the old import pattern
@@ -30,8 +29,7 @@ __all__ = [
     'create_database_manager', 
     'initialize_database',
     'close_database',
-    'get_database_manager',
-    'database_manager',
+    'get_database_manager_async',
     'RedisManager',
     'BlobManager'
 ]

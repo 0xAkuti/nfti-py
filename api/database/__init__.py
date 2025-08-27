@@ -3,7 +3,8 @@ Database layer for the NFT Inspector API with support for multiple backends.
 """
 
 import logging
-from typing import TYPE_CHECKING
+import threading
+from typing import TYPE_CHECKING, Optional
 
 from .base import DatabaseManagerInterface
 
@@ -12,6 +13,77 @@ if TYPE_CHECKING:
     from .blob import BlobManager
 
 logger = logging.getLogger(__name__)
+
+
+class DatabaseSingleton:
+    """
+    Thread-safe singleton for database manager.
+    Provides lazy initialization on first access.
+    """
+    _instance: Optional['DatabaseSingleton'] = None
+    _lock = threading.Lock()
+    _database_manager: Optional[DatabaseManagerInterface] = None
+    _initialized = False
+    
+    def __new__(cls):
+        if cls._instance is None:
+            with cls._lock:
+                if cls._instance is None:
+                    cls._instance = super().__new__(cls)
+        return cls._instance
+    
+    def __init__(self):
+        # Singleton pattern - __init__ only runs once
+        pass
+    
+    async def get_manager(self) -> DatabaseManagerInterface:
+        """
+        Get the database manager instance, initializing if necessary.
+        
+        Returns:
+            DatabaseManagerInterface instance
+            
+        Raises:
+            RuntimeError: If database initialization fails
+        """
+        if not self._initialized:
+            await self._initialize_lazy()
+        
+        if self._database_manager is None:
+            raise RuntimeError("Database manager failed to initialize")
+        
+        return self._database_manager
+    
+    async def _initialize_lazy(self):
+        """Lazy initialization of the database manager."""
+        with self._lock:
+            if self._initialized:
+                return
+            
+            try:
+                from ..config import settings
+                backend = settings.DATABASE_BACKEND
+                config = settings.get_database_config()
+                
+                self._database_manager = create_database_manager(backend, **config)
+                await self._database_manager.initialize()
+                self._initialized = True
+                logger.info(f"Lazy-initialized database with {backend} backend")
+                
+            except Exception as e:
+                logger.error(f"Failed to initialize database: {e}")
+                self._database_manager = None
+                self._initialized = False
+                raise RuntimeError(f"Database initialization failed: {e}")
+    
+    async def close(self):
+        """Close the database manager."""
+        with self._lock:
+            if self._database_manager is not None:
+                await self._database_manager.close()
+                self._database_manager = None
+                self._initialized = False
+                logger.info("Closed database connection")
 
 
 def create_database_manager(backend: str, **kwargs) -> DatabaseManagerInterface:
@@ -54,8 +126,8 @@ def create_database_manager(backend: str, **kwargs) -> DatabaseManagerInterface:
         raise ValueError(f"Unsupported backend '{backend}'. Supported: {supported}")
 
 
-# Global database manager instance
-database_manager: DatabaseManagerInterface = None
+# Global singleton instance
+_database_singleton = DatabaseSingleton()
 
 
 async def initialize_database(backend: str, **kwargs):
@@ -65,25 +137,17 @@ async def initialize_database(backend: str, **kwargs):
     Args:
         backend: Database backend type
         **kwargs: Backend-specific configuration
+        
+    Note: This function is kept for backward compatibility but is no longer required.
+    The database will be automatically initialized on first access.
     """
-    global database_manager
-    
-    if database_manager is not None:
-        logger.warning("Database already initialized, closing existing connection")
-        await database_manager.close()
-    
-    database_manager = create_database_manager(backend, **kwargs)
-    await database_manager.initialize()
-    logger.info(f"Initialized database with {backend} backend")
+    logger.warning("initialize_database() is deprecated. Database will be auto-initialized.")
+    # The singleton will handle initialization automatically
 
 
 async def close_database():
     """Close the global database manager."""
-    global database_manager
-    if database_manager is not None:
-        await database_manager.close()
-        database_manager = None
-        logger.info("Closed database connection")
+    await _database_singleton.close()
 
 
 def get_database_manager() -> DatabaseManagerInterface:
@@ -96,6 +160,35 @@ def get_database_manager() -> DatabaseManagerInterface:
     Raises:
         RuntimeError: If database is not initialized
     """
-    if database_manager is None:
-        raise RuntimeError("Database not initialized. Call initialize_database() first.")
-    return database_manager
+    # This function is kept for backward compatibility
+    # It will be updated to work with the singleton pattern
+    import asyncio
+    
+    try:
+        # Try to get the event loop
+        loop = asyncio.get_running_loop()
+        # If we're in an async context, we need to handle this differently
+        # For now, raise an error to guide users to the async version
+        raise RuntimeError(
+            "get_database_manager() called in async context. "
+            "Use await get_database_manager_async() instead."
+        )
+    except RuntimeError:
+        # No event loop running, this is a sync context
+        raise RuntimeError(
+            "get_database_manager() cannot be used in sync context. "
+            "Use get_database_manager_async() in async functions."
+        )
+
+
+async def get_database_manager_async() -> DatabaseManagerInterface:
+    """
+    Get the global database manager instance asynchronously.
+    
+    Returns:
+        DatabaseManagerInterface instance
+        
+    Raises:
+        RuntimeError: If database initialization fails
+    """
+    return await _database_singleton.get_manager()

@@ -8,7 +8,7 @@ import json
 import logging
 from datetime import datetime
 
-from ..database import get_database_manager
+from ..database import get_database_manager_async
 from ..models import LeaderboardResponse, LeaderboardEntry, PaginationInfo, StatsResponse
 from ..auth import verify_api_key
 
@@ -35,7 +35,7 @@ async def get_leaderboard(
         leaderboard_key = "leaderboard:global"
     
     # Get entries from Redis sorted set
-    db_manager = get_database_manager()
+    db_manager = await get_database_manager_async()
     # Use the generic leaderboard interface
     scope = "chain" if chain_id else "global"
     entries = await db_manager.get_leaderboard(
@@ -113,7 +113,8 @@ async def get_leaderboard(
 @router.get("/stats", response_model=StatsResponse)
 async def get_stats(api_key: str = Depends(verify_api_key)):
     """Get global statistics."""
-    stats_data = await get_database_manager().get_global_stats()
+    db_manager = await get_database_manager_async()
+    stats_data = await db_manager.get_global_stats()
     return StatsResponse(
         total_analyses=stats_data.get("total_analyses", 0),
         average_score=stats_data.get("average_score", 0.0),
