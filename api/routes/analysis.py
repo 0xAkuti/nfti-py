@@ -25,9 +25,9 @@ async def analyze_nft(
     contract_address = validate_address(request.contract_address)
     token_id = validate_token_id(request.token_id)
     
-    # Check if already exists
+    # Access DB once per handler
+    db_manager = await get_database_manager_async()
     if not request.force_refresh:
-        db_manager = await get_database_manager_async()
         existing = await db_manager.get_nft_analysis(request.chain_id, contract_address, token_id)
         if existing:
             return AnalysisResponse(data=existing, from_storage=True)
@@ -40,7 +40,6 @@ async def analyze_nft(
         raise HTTPException(status_code=404, detail="NFT not found")
     
     # Store
-    db_manager = await get_database_manager_async()
     await db_manager.store_nft_analysis(token_info)
     return AnalysisResponse(data=token_info, from_storage=False)
 
@@ -79,9 +78,6 @@ async def get_collection_analysis(
     
     # Use the backend-agnostic method to find contract tokens
     keys = await db_manager.find_contract_tokens(chain_id, contract_address)
-    
-    if not keys:
-        raise HTTPException(status_code=404, detail="No analyzed tokens found for this contract")
     
     if not keys:
         raise HTTPException(status_code=404, detail="No analyzed tokens found for this contract")

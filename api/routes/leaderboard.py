@@ -34,7 +34,7 @@ async def get_leaderboard(
     else:
         leaderboard_key = "leaderboard:global"
     
-    # Get entries from Redis sorted set
+    # Get entries from DB
     db_manager = await get_database_manager_async()
     # Use the generic leaderboard interface
     scope = "chain" if chain_id else "global"
