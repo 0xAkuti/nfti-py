@@ -203,6 +203,7 @@ class ERC721ComplianceResult(BaseModel):
     total_supply_status: ComplianceStatus = ComplianceStatus.NOT_APPLICABLE
     owner_of: Optional[EthereumAddress] = None
     owner_of_status: ComplianceStatus = ComplianceStatus.NOT_APPLICABLE
+    owner_of_ens: Optional[str] = None
 
 
 class ERC2981ComplianceResult(BaseModel):
@@ -212,6 +213,7 @@ class ERC2981ComplianceResult(BaseModel):
     sale_price_tested: Optional[int] = None
     recipient_status: ComplianceStatus = ComplianceStatus.NOT_APPLICABLE
     amount_status: ComplianceStatus = ComplianceStatus.NOT_APPLICABLE
+    recipient_ens: Optional[str] = None
 
 
 class ERC4907ComplianceResult(BaseModel):
@@ -221,6 +223,7 @@ class ERC4907ComplianceResult(BaseModel):
     rental_active: Optional[bool] = None
     user_status: ComplianceStatus = ComplianceStatus.NOT_APPLICABLE
     expires_status: ComplianceStatus = ComplianceStatus.NOT_APPLICABLE
+    user_of_ens: Optional[str] = None
 
 
 class ComplianceReport(BaseModel):

@@ -1,9 +1,10 @@
-from typing import Dict, Any
+from typing import Dict, Any, List
 from .types import (
     Interface, ComplianceReport, ERC721ComplianceResult, ERC2981ComplianceResult, 
     ERC4907ComplianceResult, ComplianceStatus, EthereumAddress
 )
 from .chains.web3_wrapper import EnhancedWeb3
+from .ens import resolve_multiple_ens_names
 
 
 class NFTComplianceChecker:
@@ -52,6 +53,33 @@ class NFTComplianceChecker:
                 overall_status = ComplianceStatus.FAIL
         
         report.overall_status = overall_status
+        
+        # Collect all addresses for ENS resolution
+        addresses_to_resolve: List[str] = []
+        
+        if report.erc721 and report.erc721.owner_of:
+            addresses_to_resolve.append(str(report.erc721.owner_of))
+        
+        if report.erc2981 and report.erc2981.recipient:
+            addresses_to_resolve.append(str(report.erc2981.recipient))
+        
+        if report.erc4907 and report.erc4907.user_of:
+            addresses_to_resolve.append(str(report.erc4907.user_of))
+        
+        # Resolve ENS names for all addresses in a single batch call
+        if addresses_to_resolve:
+            ens_results = await resolve_multiple_ens_names(addresses_to_resolve)
+            
+            # Update compliance results with ENS names
+            if report.erc721 and report.erc721.owner_of:
+                report.erc721.owner_of_ens = ens_results.get(str(report.erc721.owner_of))
+            
+            if report.erc2981 and report.erc2981.recipient:
+                report.erc2981.recipient_ens = ens_results.get(str(report.erc2981.recipient))
+            
+            if report.erc4907 and report.erc4907.user_of:
+                report.erc4907.user_of_ens = ens_results.get(str(report.erc4907.user_of))
+        
         return report
 
     async def _check_erc721_compliance(self, contract_address: str, token_id: int) -> ERC721ComplianceResult:
@@ -107,7 +135,7 @@ class NFTComplianceChecker:
                 if rpc_result.success and rpc_result.result:
                     owner_address = EthereumAddress.validate(str(rpc_result.result))
                     # Check if owner is not zero address
-                    is_valid_owner = not EthereumAddress.is_zero()
+                    is_valid_owner = not owner_address.is_zero()
                     if is_valid_owner:
                         result.owner_of = owner_address
                         result.owner_of_status = ComplianceStatus.PASS
