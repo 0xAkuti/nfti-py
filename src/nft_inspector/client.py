@@ -186,6 +186,13 @@ class NFTInspector:
         access_control_detector = AccessControlDetector(self.w3, contract_address)
         access_control_info = await access_control_detector.analyze_access_control()
         
+        # Detect supported interfaces
+        supported_interfaces = await self.interface_detector.get_supported_interfaces(contract_address)
+        
+        # Check compliance with supported standards
+        compliance_checker = NFTComplianceChecker(self.w3, supported_interfaces)
+        compliance_report = await compliance_checker.check_compliance(contract_address, token_id)
+        
         # Create TokenInfo first
         token_info = TokenInfo(
             contract_address=contract_address,
@@ -197,7 +204,9 @@ class NFTInspector:
             contract_metadata=contract_metadata,
             contract_data_report=contract_data_report,
             proxy_info=proxy_info,
-            access_control_info=access_control_info
+            access_control_info=access_control_info,
+            supported_interfaces=supported_interfaces,
+            compliance_report=compliance_report
         )
         
         # Perform trust analysis if enabled

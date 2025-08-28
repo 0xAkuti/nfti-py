@@ -1,6 +1,6 @@
 from typing import Optional, List, Dict, Any
 from pydantic import BaseModel, Field, AliasChoices, model_validator
-from .types import TokenURI, EthereumAddress, DisplayType, MediaProtocol, DataEncoding, WeakTokenURI, ProxyStandard, AccessControlType, GovernanceType, GatewayLevel
+from .types import TokenURI, EthereumAddress, DisplayType, MediaProtocol, DataEncoding, WeakTokenURI, ProxyStandard, AccessControlType, GovernanceType, GatewayLevel, Interface, ComplianceReport
 
 
 
@@ -116,6 +116,8 @@ class TokenInfo(BaseModel):
     contract_data_report: Optional[ContractDataReport] = None
     proxy_info: Optional[ProxyInfo] = None
     access_control_info: Optional[AccessControlInfo] = None
+    supported_interfaces: Optional[Dict[Interface, bool]] = None
+    compliance_report: Optional[ComplianceReport] = None
     trust_analysis: Optional[Any] = None
     
     class Config:
