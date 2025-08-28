@@ -173,6 +173,52 @@ class RpcErrorType(str, Enum):
     UNKNOWN_ERROR = "unknown_error"
 
 
+class ComplianceStatus(str, Enum):
+    """Enum for compliance check status"""
+    PASS = "pass"
+    FAIL = "fail"
+    ERROR = "error"
+    NOT_APPLICABLE = "not_applicable"
+
+
+class ERC721ComplianceResult(BaseModel):
+    """ERC721 compliance check results"""
+    name: Optional[str] = None
+    name_status: ComplianceStatus = ComplianceStatus.NOT_APPLICABLE
+    symbol: Optional[str] = None
+    symbol_status: ComplianceStatus = ComplianceStatus.NOT_APPLICABLE
+    total_supply: Optional[int] = None
+    total_supply_status: ComplianceStatus = ComplianceStatus.NOT_APPLICABLE
+    owner_of: Optional[EthereumAddress] = None
+    owner_of_status: ComplianceStatus = ComplianceStatus.NOT_APPLICABLE
+
+
+class ERC2981ComplianceResult(BaseModel):
+    """ERC2981 royalty compliance check results"""
+    recipient: Optional[EthereumAddress] = None
+    royalty_amount: Optional[int] = None
+    sale_price_tested: Optional[int] = None
+    recipient_status: ComplianceStatus = ComplianceStatus.NOT_APPLICABLE
+    amount_status: ComplianceStatus = ComplianceStatus.NOT_APPLICABLE
+
+
+class ERC4907ComplianceResult(BaseModel):
+    """ERC4907 rental compliance check results"""
+    user_of: Optional[EthereumAddress] = None
+    user_expires: Optional[int] = None
+    rental_active: Optional[bool] = None
+    user_status: ComplianceStatus = ComplianceStatus.NOT_APPLICABLE
+    expires_status: ComplianceStatus = ComplianceStatus.NOT_APPLICABLE
+
+
+class ComplianceReport(BaseModel):
+    """Complete compliance analysis report"""
+    erc721: Optional[ERC721ComplianceResult] = None
+    erc2981: Optional[ERC2981ComplianceResult] = None
+    erc4907: Optional[ERC4907ComplianceResult] = None
+    overall_status: ComplianceStatus = ComplianceStatus.PASS
+
+
 class RpcResult(BaseModel, Generic[T]):
     """Generic result wrapper for RPC calls with error handling"""
     success: bool

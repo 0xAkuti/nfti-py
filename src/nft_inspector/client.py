@@ -6,11 +6,12 @@ from .uri_parsers import URIResolver
 from .analyzer import UrlAnalyzer
 from .chains import ChainProvider
 from .chains.web3_wrapper import EnhancedWeb3
-from .types import Interface, RpcResult, NFTStandard
+from .types import Interface, RpcResult, NFTStandard, ComplianceReport
 from .interface_detector import InterfaceDetector
 from .proxy_detector import ProxyDetector
 from .access_control_detector import AccessControlDetector
 from .trust_analyzer import TrustAnalyzer
+from .compliance_checker import NFTComplianceChecker
 
 
 NFT_ABI = [
@@ -240,6 +241,17 @@ class NFTInspector:
         await self._ensure_connection()
         proxy_detector = ProxyDetector(self.w3, contract_address)
         return await proxy_detector.detect_proxy_standard()
+    
+    async def check_compliance(self, contract_address: str, token_id: int) -> ComplianceReport:
+        """Check NFT contract compliance with supported standards."""
+        await self._ensure_connection()
+        
+        # First get supported interfaces
+        supported_interfaces = await self.interface_detector.get_supported_interfaces(contract_address)
+        
+        # Then check compliance
+        compliance_checker = NFTComplianceChecker(self.w3, supported_interfaces)
+        return await compliance_checker.check_compliance(contract_address, token_id)
 
     async def get_access_control_info(self, contract_address: str) -> AccessControlInfo:
         await self._ensure_connection()
