@@ -20,6 +20,9 @@ WeakTokenURI = TokenURI | str
 class EthereumAddress(str):
     """A type that validates Ethereum addresses"""
     
+    # Zero address constant
+    ZERO_ADDRESS = "0x0000000000000000000000000000000000000000"
+    
     @classmethod
     def __get_pydantic_core_schema__(
         cls, 
@@ -40,6 +43,15 @@ class EthereumAddress(str):
             raise ValueError(f"Invalid Ethereum address: {value}")
         
         return cls(Web3.to_checksum_address(value))
+    
+    @classmethod
+    def is_zero_address(cls, address: str) -> bool:
+        """Check if the given address string is the zero address."""
+        return address == cls.ZERO_ADDRESS
+    
+    def is_zero(self) -> bool:
+        """Check if this address instance is the zero address."""
+        return str(self) == self.ZERO_ADDRESS
     
     def __repr__(self) -> str:
         return f"EthereumAddress('{self}')"

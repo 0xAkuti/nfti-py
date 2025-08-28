@@ -105,11 +105,11 @@ class NFTComplianceChecker:
             
             elif func_name == 'ownerOf':
                 if rpc_result.success and rpc_result.result:
-                    owner_address = str(rpc_result.result)
+                    owner_address = EthereumAddress.validate(str(rpc_result.result))
                     # Check if owner is not zero address
-                    is_valid_owner = owner_address != "0x0000000000000000000000000000000000000000"
+                    is_valid_owner = not EthereumAddress.is_zero()
                     if is_valid_owner:
-                        result.owner_of = EthereumAddress.validate(owner_address)
+                        result.owner_of = owner_address
                         result.owner_of_status = ComplianceStatus.PASS
                     else:
                         result.owner_of_status = ComplianceStatus.FAIL
@@ -147,13 +147,13 @@ class NFTComplianceChecker:
         
         if rpc_result.success and rpc_result.result:
             recipient, royalty_amount = rpc_result.result
-            recipient_address = str(recipient)
+            recipient_address = EthereumAddress.validate(str(recipient))
             result.royalty_amount = int(royalty_amount)
             
             # Validate recipient is not zero address
-            is_valid_recipient = recipient_address != "0x0000000000000000000000000000000000000000"
+            is_valid_recipient = not recipient_address.is_zero()
             if is_valid_recipient:
-                result.recipient = EthereumAddress.validate(recipient_address)
+                result.recipient = recipient_address
                 result.recipient_status = ComplianceStatus.PASS
             else:
                 result.recipient_status = ComplianceStatus.FAIL
@@ -202,10 +202,10 @@ class NFTComplianceChecker:
         
         # Process userOf result
         if user_result.success and user_result.result is not None:
-            user_address = str(user_result.result)
+            user_address = EthereumAddress.validate(str(user_result.result))
             # Zero address is valid (means no user set)
-            if user_address != "0x0000000000000000000000000000000000000000":
-                result.user_of = EthereumAddress.validate(user_address)
+            if not user_address.is_zero():
+                result.user_of = user_address
             else:
                 result.user_of = None
             result.user_status = ComplianceStatus.PASS

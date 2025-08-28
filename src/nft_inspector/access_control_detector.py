@@ -1,4 +1,4 @@
-from typing import List, Optional, Dict, Any, Tuple
+from typing import List, Optional, Any, Tuple
 from .types import AccessControlType, GovernanceType, EthereumAddress, RpcResult
 from .models import AccessControlInfo
 from .chains.web3_wrapper import EnhancedWeb3
@@ -14,7 +14,6 @@ class AccessControlDetector:
     ACCESS_CONTROL_ENUMS_INTERFACE_ID = "0x2360c304"  # OpenZeppelin AccessControl Enums
     
     # Common constants
-    ZERO_ADDRESS = "0x0000000000000000000000000000000000000000"
     ZERO_BYTES32 = "0x0000000000000000000000000000000000000000000000000000000000000000"
     
     # Optimized ABI for batch detection
@@ -111,13 +110,15 @@ class AccessControlDetector:
         owner_result, access_control_result, access_control_enum_result = results
         
         # Extract addresses and values from successful results
-        owner_address = owner_result.result if owner_result.success else None
+        owner_address_str = owner_result.result if owner_result.success else None
+        owner_address = EthereumAddress.validate(owner_address_str) if owner_address_str else None
         has_access_control = access_control_result.success and access_control_result.result
         
         # Get role admin if AccessControl Enumerable is supported
         role_admin_address = None
         if access_control_enum_result.success and access_control_enum_result.result:
-            role_admin_address = await self._get_default_admin_role_member()
+            role_admin_address_str = await self._get_default_admin_role_member()
+            role_admin_address = EthereumAddress.validate(role_admin_address_str) if role_admin_address_str else None
 
         # Determine access control type from batch results  
         access_type, governance_type = await self._classify_access_control(
@@ -133,37 +134,35 @@ class AccessControlDetector:
         
         # Resolve ENS names for owner and admin addresses concurrently
         addresses_to_resolve = []
-        if primary_address and primary_address != self.ZERO_ADDRESS:
-            addresses_to_resolve.append(primary_address)
-        if role_admin_address and role_admin_address != self.ZERO_ADDRESS and role_admin_address != primary_address:
-            addresses_to_resolve.append(role_admin_address)
+        if primary_address and not primary_address.is_zero():
+            addresses_to_resolve.append(str(primary_address))
+        if role_admin_address and not role_admin_address.is_zero() and role_admin_address != primary_address:
+            addresses_to_resolve.append(str(role_admin_address))
             
         ens_results = await resolve_multiple_ens_names(addresses_to_resolve) if addresses_to_resolve else {}
         
         return AccessControlInfo(
             access_control_type=access_type,
             governance_type=governance_type,
-            has_owner=bool(owner_address and owner_address != self.ZERO_ADDRESS),
-            owner_address=EthereumAddress.validate(primary_address) if primary_address else None,
-            owner_ens_name=ens_results.get(primary_address),
+            has_owner=bool(owner_address),
+            owner_address=primary_address,
+            owner_ens_name=ens_results.get(str(primary_address)) if primary_address else None,
             has_roles=has_access_control,
-            admin_address=EthereumAddress.validate(role_admin_address) if (role_admin_address and role_admin_address != self.ZERO_ADDRESS) else None,
-            admin_ens_name=ens_results.get(role_admin_address),
+            admin_address=role_admin_address,
+            admin_ens_name=ens_results.get(str(role_admin_address)) if role_admin_address else None,
             timelock_delay=timelock_delay
         )
     
     async def _classify_access_control(
         self, 
-        owner_address: Optional[str],
-        role_admin_address: Optional[str],
+        owner_address: Optional[EthereumAddress],
+        role_admin_address: Optional[EthereumAddress],
         has_access_control: bool,
         owner_function_exists: bool
     ) -> Tuple[AccessControlType, GovernanceType]:
         """Classify access control type and governance type from batch results"""
 
-        # simplify zero address to None for later comparisons
-        if owner_address and owner_address == self.ZERO_ADDRESS:
-            owner_address = None
+        # Note: zero addresses are already filtered out when converting to EthereumAddress instances
         
         # Priority-based classification  
         if has_access_control:            
@@ -183,9 +182,9 @@ class AccessControlDetector:
         # No access control functions found
         return AccessControlType.NONE, GovernanceType.UNKNOWN
     
-    async def _classify_governance_from_address(self, address: Optional[str]) -> GovernanceType:
+    async def _classify_governance_from_address(self, address: Optional[EthereumAddress]) -> GovernanceType:
         """Classify governance type from address characteristics"""
-        if not address or address == self.ZERO_ADDRESS:
+        if not address:
             return GovernanceType.UNKNOWN
         
         try:

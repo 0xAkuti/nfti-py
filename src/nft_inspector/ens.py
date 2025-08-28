@@ -6,6 +6,7 @@ import asyncio
 import aiohttp
 from typing import Optional
 import logging
+from .types import EthereumAddress
 
 logger = logging.getLogger(__name__)
 
@@ -24,7 +25,7 @@ async def resolve_ens_name(address: str) -> Optional[str]:
         >>> ens_name = await resolve_ens_name("0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045")
         >>> print(ens_name)  # "vitalik.eth"
     """
-    if not address or address == "0x0000000000000000000000000000000000000000":
+    if not address or EthereumAddress.is_zero_address(address):
         return None
     
     url = f"https://api.ensdata.net/{address}"
@@ -69,7 +70,7 @@ async def resolve_multiple_ens_names(addresses: list[str]) -> dict[str, Optional
     # Filter out invalid addresses
     valid_addresses = [
         addr for addr in addresses 
-        if addr and addr != "0x0000000000000000000000000000000000000000"
+        if addr and not EthereumAddress.is_zero_address(addr)
     ]
     
     if not valid_addresses:
