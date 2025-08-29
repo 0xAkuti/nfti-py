@@ -9,7 +9,7 @@ from datetime import datetime
 from src.nft_inspector.client import NFTInspector
 from ..database import get_database_manager_async
 from ..dependencies import validate_address, validate_token_id
-from ..models import AnalysisRequest, AnalysisResponse, ContractAnalysisResponse
+from ..models import AnalysisRequest, AnalysisResponse
 from ..auth import verify_api_key
 
 logger = logging.getLogger(__name__)
