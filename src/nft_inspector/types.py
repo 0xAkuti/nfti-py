@@ -77,14 +77,14 @@ class MediaProtocol(str, Enum):
     UNKNOWN = "unknown"
 
     def get_score(self) -> int:
-        """Get a score for the media protocol"""
+        """Get a score for the media protocol (0-100 scale)"""
         return {
-            MediaProtocol.DATA_URI: 10,
-            MediaProtocol.ARWEAVE: 7,
-            MediaProtocol.IPFS: 5,
-            MediaProtocol.IPNS: 3,
-            MediaProtocol.HTTPS: 2,
-            MediaProtocol.HTTP: 1,
+            MediaProtocol.DATA_URI: 100,
+            MediaProtocol.ARWEAVE: 70,
+            MediaProtocol.IPFS: 50,
+            MediaProtocol.IPNS: 30,
+            MediaProtocol.HTTPS: 20,
+            MediaProtocol.HTTP: 10,
             MediaProtocol.NONE: 0,
             MediaProtocol.UNKNOWN: 0
         }[self]

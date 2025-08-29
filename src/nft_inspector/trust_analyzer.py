@@ -33,10 +33,10 @@ class TrustAnalyzer:
     
     # Chain penalty multipliers for permanence scoring - only mainnet gets 0.0
     CHAIN_PENALTIES = {
-        "Stage 2": 0.5,   # Small penalty even for best L2
-        "Stage 1": 1.0,   # Moderate penalty
-        "Stage 0": 1.5,   # High penalty
-        None: 2.0         # Maximum penalty for unknown
+        "Stage 2": 5.0,   # Small penalty even for best L2
+        "Stage 1": 10.0,  # Moderate penalty
+        "Stage 0": 15.0,  # High penalty
+        None: 20.0        # Maximum penalty for unknown
     }
     
     def __init__(self, chain_info: Optional[ChainInfo] = None):
@@ -131,9 +131,9 @@ class TrustAnalyzer:
         chain_trust = self._analyze_chain_trust(token_info)
         
         # Calculate overall score using configurable weights
-        overall_raw = (permanence.overall_score * self.PERMANENCE_WEIGHT + 
+        overall_raw = (permanence.overall_score * self.PERMANENCE_WEIGHT +
                       trustlessness.overall_score * self.TRUSTLESSNESS_WEIGHT)
-        overall_score = max(0, min(10, round(overall_raw)))
+        overall_score = max(0, min(100, round(overall_raw)))
         
         # Determine trust level
         overall_level = self._score_to_trust_level(overall_score)
@@ -198,12 +198,12 @@ class TrustAnalyzer:
         
         # Apply penalties (dependency gating handled by protocol scoring)
         adjusted_score = base_score - chain_penalty
-        overall_score = max(0, min(10, round(adjusted_score)))
+        overall_score = max(0, min(100, round(adjusted_score)))
         
         # Determine characteristics using original scores for consistency
-        is_fully_onchain = (metadata_score == 10 and 
-                           (image_score == 0 or image_score == 10) and 
-                           (animation_score == 0 or animation_score == 10))
+        is_fully_onchain = (metadata_score == 100 and
+                           (image_score == 0 or image_score == 100) and
+                           (animation_score == 0 or animation_score == 100))
         
         has_external_deps = self._has_external_dependencies(token_info)
         
@@ -275,7 +275,7 @@ class TrustAnalyzer:
         stage = chain_data.stage if chain_data else None
         
         # Use configurable penalty multipliers
-        return self.CHAIN_PENALTIES.get(stage, 2.0)
+        return self.CHAIN_PENALTIES.get(stage, 20.0)
     
     def _has_external_dependencies(self, token_info: TokenInfo) -> bool:
         """Check if token has external dependencies in SVG/HTML"""
@@ -339,52 +339,52 @@ class TrustAnalyzer:
     def _score_contract_control(self, access_control_info: Optional[Any]) -> Tuple[int, bool, str, int]:
         """Score contract control patterns (merged access control and governance) and return (score, has_owner, owner_type, transparency)"""
         if not access_control_info:
-            return 10, False, "none", 10  # No access control info = assume no owner
+            return 100, False, "none", 100  # No access control info = assume no owner
         
-        score = 10
+        score = 100
         has_owner = access_control_info.has_owner or access_control_info.has_roles
-        transparency = 10
-        
+        transparency = 100
+
         # Determine owner type from governance type and actual ownership
         if not has_owner:
             owner_type = "none"
-            score = 10  # No owner = best score
-            transparency = 10
+            score = 100  # No owner = best score
+            transparency = 100
         elif access_control_info.governance_type == GovernanceType.RENOUNCED:
             owner_type = "renounced"
-            score = 10  # Best case - no owner
-            transparency = 10
+            score = 100  # Best case - no owner
+            transparency = 100
         elif access_control_info.governance_type == GovernanceType.EOA:
             owner_type = "eoa"
-            score = 3   # Worst case - single EOA control
-            transparency = 2  # Low transparency for EOA
+            score = 30   # Worst case - single EOA control
+            transparency = 20  # Low transparency for EOA
         elif access_control_info.governance_type == GovernanceType.MULTISIG:
             owner_type = "multisig"
-            score = 6   # Better - requires multiple signatures
-            transparency = 6  # Moderate transparency
+            score = 60   # Better - requires multiple signatures
+            transparency = 60  # Moderate transparency
         elif access_control_info.governance_type == GovernanceType.TIMELOCK:
             owner_type = "timelock"
-            score = 8   # Good - time-delayed execution
-            transparency = 8  # Good transparency
+            score = 80   # Good - time-delayed execution
+            transparency = 80  # Good transparency
         elif access_control_info.governance_type == GovernanceType.CONTRACT:
             owner_type = "contract"
-            score = 5   # Unknown contract behavior
-            transparency = 4  # Low transparency without analysis
+            score = 50   # Unknown contract behavior
+            transparency = 40  # Low transparency without analysis
         else:
             owner_type = "unknown"
-            score = 4   # Conservative scoring for unknown types
-            transparency = 3
+            score = 40   # Conservative scoring for unknown types
+            transparency = 30
         
         # Access control type adjustments
         if access_control_info.access_control_type:
             if access_control_info.access_control_type == AccessControlType.ACCESS_CONTROL:
                 # Role-based access is generally better than single owner
-                score = min(score + 1, 10)
-                transparency = min(transparency + 2, 10)
+                score = min(score + 10, 100)
+                transparency = min(transparency + 20, 100)
             elif access_control_info.access_control_type == AccessControlType.TIMELOCK:
                 # Timelock governance gets bonus
-                score = min(score + 2, 10)
-                transparency = min(transparency + 2, 10)
+                score = min(score + 20, 100)
+                transparency = min(transparency + 20, 100)
         
         return score, has_owner, owner_type, transparency
     
@@ -392,30 +392,30 @@ class TrustAnalyzer:
     def _score_upgradeability(self, proxy_info: Optional[Any]) -> Tuple[int, bool, Optional[str]]:
         """Score based on proxy risk for NFT tokenURI permanence and return (score, is_upgradeable, proxy_type)"""
         if not proxy_info:
-            return 10, False, None  # No proxy = immutable = best score
-        
+            return 100, False, None  # No proxy = immutable = best score
+
         if not proxy_info.is_proxy:
-            return 10, False, None  # Not a proxy = immutable
-        
+            return 100, False, None  # Not a proxy = immutable
+
         # Contract is a proxy - assess tokenURI risk based on proxy type
         proxy_type = proxy_info.proxy_standard.value if proxy_info.proxy_standard else "unknown"
         is_upgradeable = proxy_info.is_upgradeable
-        
+
         if not is_upgradeable:
-            return 9, False, proxy_type  # Proxy but not upgradeable (e.g., minimal proxy) = very good
-        
+            return 90, False, proxy_type  # Proxy but not upgradeable (e.g., minimal proxy) = very good
+
         # Upgradeable proxy - severe scoring for tokenURI risk
         proxy_scores = {
-            ProxyStandard.EIP_1167_MINIMAL: 9,      # Clone - usually safe for tokenURI
-            ProxyStandard.EIP_1967_TRANSPARENT: 3,  # Admin can change tokenURI implementation
-            ProxyStandard.EIP_1822_UUPS: 2,         # Self-upgrade can modify tokenURI function
-            ProxyStandard.BEACON_PROXY: 2,          # Central beacon can change tokenURI behavior
-            ProxyStandard.EIP_2535_DIAMOND: 2,      # Complex facets - highest tokenURI risk
-            ProxyStandard.CUSTOM_PROXY: 2,          # Unknown logic - assume high tokenURI risk
-            ProxyStandard.NOT_PROXY: 10             # Should not happen here
+            ProxyStandard.EIP_1167_MINIMAL: 90,     # Clone - usually safe for tokenURI
+            ProxyStandard.EIP_1967_TRANSPARENT: 30, # Admin can change tokenURI implementation
+            ProxyStandard.EIP_1822_UUPS: 20,        # Self-upgrade can modify tokenURI function
+            ProxyStandard.BEACON_PROXY: 20,         # Central beacon can change tokenURI behavior
+            ProxyStandard.EIP_2535_DIAMOND: 20,     # Complex facets - highest tokenURI risk
+            ProxyStandard.CUSTOM_PROXY: 20,         # Unknown logic - assume high tokenURI risk
+            ProxyStandard.NOT_PROXY: 100            # Should not happen here
         }
-        
-        score = proxy_scores.get(proxy_info.proxy_standard, 2)
+
+        score = proxy_scores.get(proxy_info.proxy_standard, 20)
         return score, True, proxy_type
     
     def _analyze_chain_trust(self, _token_info: TokenInfo) -> ChainTrustScore:
@@ -437,13 +437,13 @@ class TrustAnalyzer:
     
     def _score_to_trust_level(self, score: int) -> TrustLevel:
         """Convert numeric score to trust level"""
-        if score >= 9:
+        if score >= 90:
             return TrustLevel.EXCELLENT
-        elif score >= 7:
+        elif score >= 70:
             return TrustLevel.GOOD
-        elif score >= 5:
+        elif score >= 50:
             return TrustLevel.MODERATE
-        elif score >= 3:
+        elif score >= 30:
             return TrustLevel.POOR
         else:
             return TrustLevel.CRITICAL
@@ -548,11 +548,11 @@ class TrustAnalyzer:
         """Generate simple actionable recommendations"""
         recommendations = []
         
-        if permanence.overall_score < 6:
+        if permanence.overall_score < 60:
             recommendations.append("Improve data permanence by using IPFS or on-chain storage")
-        
+
         # Only suggest ownership changes if there's actually an owner
-        if trustlessness.overall_score < 8 and trustlessness.has_owner:
+        if trustlessness.overall_score < 80 and trustlessness.has_owner:
             recommendations.append("Consider renouncing ownership or using time-locked governance")
         
         return recommendations

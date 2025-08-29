@@ -8,12 +8,12 @@ from pydantic import BaseModel, Field
 
 
 class TrustLevel(str, Enum):
-    """Trust level classifications for NFT analysis"""
-    EXCELLENT = "excellent"      # 9-10: Fully on-chain, renounced, no dependencies
-    GOOD = "good"               # 7-8: Mostly decentralized, minimal trust assumptions
-    MODERATE = "moderate"       # 5-6: Mixed approach, some centralized components
-    POOR = "poor"              # 3-4: Mostly centralized, significant trust assumptions
-    CRITICAL = "critical"      # 0-2: Fully centralized, high dependency risk
+    """Trust level classifications for NFT analysis (0-100 scale)"""
+    EXCELLENT = "excellent"      # 90-100: Fully on-chain, renounced, no dependencies
+    GOOD = "good"               # 70-89: Mostly decentralized, minimal trust assumptions
+    MODERATE = "moderate"       # 50-69: Mixed approach, some centralized components
+    POOR = "poor"              # 30-49: Mostly centralized, significant trust assumptions
+    CRITICAL = "critical"      # 0-29: Fully centralized, high dependency risk
 
 
 class AssumptionSeverity(str, Enum):
@@ -42,10 +42,10 @@ class TrustAssumption(BaseModel):
 
 
 class PermanenceScore(BaseModel):
-    """Detailed breakdown of data permanence scoring"""
-    overall_score: int         # 0-10 composite score
+    """Detailed breakdown of data permanence scoring (0-100 scale)"""
+    overall_score: int         # 0-100 composite score
     metadata_score: int        # Score for tokenURI/metadata storage
-    image_score: int          # Score for image storage  
+    image_score: int          # Score for image storage
     animation_score: int      # Score for animation storage
     contract_metadata_score: int  # Score for contractURI storage
     
@@ -60,8 +60,8 @@ class PermanenceScore(BaseModel):
 
 
 class TrustlessnessScore(BaseModel):
-    """Detailed breakdown of trustlessness/control scoring"""
-    overall_score: int         # 0-10 composite score
+    """Detailed breakdown of trustlessness/control scoring (0-100 scale)"""
+    overall_score: int         # 0-100 composite score
     access_control_score: int  # Score based on contract control (merged access control and governance)
     upgradeability_score: int  # Score based on proxy/upgrade patterns
     
@@ -91,7 +91,7 @@ class ChainTrustScore(BaseModel):
 class TrustAnalysisResult(BaseModel):
     """Complete trust analysis result"""
     # Overall scores
-    overall_score: int                    # 0-10 weighted composite score
+    overall_score: int                    # 0-100 weighted composite score
     overall_level: TrustLevel            # Classification based on score
     
     # Component scores
@@ -157,4 +157,4 @@ class TrustAnalysisResult(BaseModel):
             TrustLevel.CRITICAL: "Critical - Fully centralized with high dependency risk"
         }
         
-        return f"{self.overall_score}/10 - {level_descriptions[self.overall_level]}"
+        return f"{self.overall_score}/100 - {level_descriptions[self.overall_level]}"
