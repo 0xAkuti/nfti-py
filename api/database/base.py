@@ -39,6 +39,7 @@ class DatabaseManagerInterface(ABC):
         # Final fallback
         return "Unknown Collection"
 
+
     @abstractmethod
     async def initialize(self) -> None:
         """Initialize the database connection/client."""

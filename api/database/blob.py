@@ -11,7 +11,7 @@ import vercel_blob
 
 from src.nft_inspector.models import TokenInfo, NFTInspectionResult
 from .base import DatabaseManagerInterface
-from ..models import LeaderboardEntry
+from ..models import LeaderboardEntry, ScoreStatistics, StatsResponse
 
 logger = logging.getLogger(__name__)
 
@@ -37,9 +37,6 @@ class BlobManager(DatabaseManagerInterface):
             await asyncio.to_thread(vercel_blob.list, {'limit': '1'})
             logger.info("Connected to Vercel Blob storage")
             self.initialized = True
-            
-            # Initialize global stats if needed
-            await self._ensure_global_stats()
             
         except Exception as e:
             raise ValueError(f"Failed to connect to Vercel Blob: {e}")
@@ -437,53 +434,51 @@ class BlobManager(DatabaseManagerInterface):
             logger.warning(f"Error applying filters: {e}")
             return False
     
-    async def _ensure_global_stats(self):
-        """Initialize global stats if they don't exist."""
-        stats_path = self._get_stats_path()
-        stats = await self._get_blob_json(stats_path)
-        
-        if not stats:
-            initial_stats = {
-                "total_analyses": 0,
-                "total_score": 0.0,
-                "average_score": 0.0,
-                "last_updated": datetime.now(timezone.utc).isoformat()
-            }
-            await self._put_blob_json(stats_path, initial_stats)
-    
     async def _update_global_stats_blob(self, token_info: TokenInfo):
-        """Update global statistics."""
+        """Update global statistics with detailed score distributions."""
         max_retries = 3
         for attempt in range(max_retries):
             try:
                 stats_path = self._get_stats_path()
                 
-                # Get current stats
-                stats_data = await self._get_blob_json(stats_path) or {
-                    "total_analyses": 0,
-                    "total_score": 0.0,
-                    "average_score": 0.0
-                }
+                # Get current stats and parse with Pydantic
+                stats_data = await self._get_blob_json(stats_path)
+                if stats_data:
+                    current_stats = StatsResponse.model_validate(stats_data)
+                else:
+                    # Initialize empty stats
+                    empty_stats = ScoreStatistics(average=0.0, total=0.0, histogram={})
+                    current_stats = StatsResponse(
+                        total_analyses=0,
+                        total_score_stats=empty_stats,
+                        permanence_score_stats=empty_stats,
+                        trustlessness_score_stats=empty_stats,
+                        last_updated=datetime.now(timezone.utc).isoformat()
+                    )
                 
-                # Calculate new statistics
-                current_analyses = stats_data.get("total_analyses", 0)
-                current_total_score = stats_data.get("total_score", 0.0)
+                new_analyses = current_stats.total_analyses + 1
                 
-                new_analyses = current_analyses + 1
-                score = token_info.trust_analysis.overall_score if token_info.trust_analysis else 0
-                new_total_score = current_total_score + score
-                new_average = new_total_score / new_analyses if new_analyses > 0 else 0
+                # Extract scores from trust analysis
+                total_score = token_info.trust_analysis.overall_score
+                permanence_score = token_info.trust_analysis.permanence.overall_score
+                trustlessness_score = token_info.trust_analysis.trustlessness.overall_score
                 
-                # Update stats
-                updated_stats = {
-                    "total_analyses": new_analyses,
-                    "total_score": new_total_score,
-                    "average_score": round(new_average, 2),
-                    "last_updated": datetime.now(timezone.utc).isoformat()
-                }
+                # Update score statistics using the model's add_score method
+                updated_total_stats = current_stats.total_score_stats.add_score(total_score, current_stats.total_analyses)
+                updated_permanence_stats = current_stats.permanence_score_stats.add_score(permanence_score, current_stats.total_analyses)
+                updated_trustlessness_stats = current_stats.trustlessness_score_stats.add_score(trustlessness_score, current_stats.total_analyses)
+                
+                # Create updated response
+                updated_response = StatsResponse(
+                    total_analyses=new_analyses,
+                    total_score_stats=updated_total_stats,
+                    permanence_score_stats=updated_permanence_stats,
+                    trustlessness_score_stats=updated_trustlessness_stats,
+                    last_updated=datetime.now(timezone.utc).isoformat()
+                )
                 
                 # Store updated stats
-                success = await self._put_blob_json(stats_path, updated_stats)
+                success = await self._put_blob_json(stats_path, updated_response.model_dump())
                 if success:
                     break
                     
@@ -580,23 +575,28 @@ class BlobManager(DatabaseManagerInterface):
             return None
     
     async def get_global_stats(self) -> Dict[str, Any]:
-        """Get global statistics."""
+        """Get global statistics with detailed score distributions."""
         try:
             if not self.initialized:
                 raise RuntimeError("Database not initialized")
             
             stats_path = self._get_stats_path()
-            stats_data = await self._get_blob_json(stats_path) or {
-                "total_analyses": 0,
-                "average_score": 0.0,
-                "last_updated": datetime.now(timezone.utc).isoformat()
-            }
+            stats_data = await self._get_blob_json(stats_path)
             
-            return {
-                "total_analyses": stats_data.get("total_analyses", 0),
-                "average_score": stats_data.get("average_score", 0.0),
-                "last_updated": stats_data.get("last_updated", "")
-            }
+            if stats_data:
+                # Parse with Pydantic and return as dict
+                return StatsResponse.model_validate(stats_data).model_dump()
+            else:
+                # Return empty stats
+                empty_stats = ScoreStatistics(average=0.0, total=0.0, histogram={})
+                empty_response = StatsResponse(
+                    total_analyses=0,
+                    total_score_stats=empty_stats,
+                    permanence_score_stats=empty_stats,
+                    trustlessness_score_stats=empty_stats,
+                    last_updated=datetime.now(timezone.utc).isoformat()
+                )
+                return empty_response.model_dump()
             
         except Exception as e:
             logger.error(f"Failed to get global stats: {e}")

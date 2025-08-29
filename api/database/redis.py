@@ -10,7 +10,7 @@ import redis.asyncio as redis
 
 from src.nft_inspector.models import TokenInfo, NFTInspectionResult
 from .base import DatabaseManagerInterface
-from ..models import LeaderboardEntry
+from ..models import LeaderboardEntry, ScoreStatistics, StatsResponse
 
 logger = logging.getLogger(__name__)
 
@@ -31,12 +31,27 @@ class RedisManager(DatabaseManagerInterface):
         await self.redis.ping()
         logger.info("Connected to Redis")
         
-        # Initialize basic stats if needed
+        # Initialize stats with empty ScoreStatistics if needed
         if not await self.redis.exists("stats:global"):
+            empty_stats = ScoreStatistics(average=0.0, total=0.0, histogram={})
+            initial_response = StatsResponse(
+                total_analyses=0,
+                total_score_stats=empty_stats,
+                permanence_score_stats=empty_stats,
+                trustlessness_score_stats=empty_stats,
+                last_updated=datetime.now(timezone.utc).isoformat()
+            )
+            
+            # Convert to Redis storage format
             await self.redis.hset("stats:global", mapping={
                 "total_analyses": "0",
-                "average_score": "0.0",
-                "last_updated": datetime.now(timezone.utc).isoformat()
+                "total_score_total": "0.0",
+                "total_score_histogram": "{}",
+                "permanence_score_total": "0.0",
+                "permanence_score_histogram": "{}",
+                "trustlessness_score_total": "0.0",
+                "trustlessness_score_histogram": "{}",
+                "last_updated": initial_response.last_updated
             })
     
     async def close(self):
@@ -217,27 +232,61 @@ class RedisManager(DatabaseManagerInterface):
             logger.error(f"Failed to update collection stats: {e}")
     
     async def _update_global_stats(self, token_info: TokenInfo, pipe):
-        """Update global statistics."""
+        """Update global statistics with detailed score distributions."""
         try:
             # Increment analysis counter
             pipe.incr("analysis_count")
             
-            # Update global stats
+            # Get current stats
             stats_data = await self.redis.hgetall("stats:global")
             current_analyses = int(stats_data.get("total_analyses", "0"))
-            current_total_score = float(stats_data.get("total_score", "0.0"))
-            
             new_analyses = current_analyses + 1
-            score = token_info.trust_analysis.overall_score if token_info.trust_analysis else 0
-            new_total_score = current_total_score + score
-            new_average = new_total_score / new_analyses if new_analyses > 0 else 0
             
+            # Extract scores from trust analysis
+            total_score = token_info.trust_analysis.overall_score
+            permanence_score = token_info.trust_analysis.permanence.overall_score
+            trustlessness_score = token_info.trust_analysis.trustlessness.overall_score
+            
+            # Create current ScoreStatistics from Redis data and update using model method
+            current_total_stats = ScoreStatistics(
+                average=0.0,  # Will be recalculated
+                total=float(stats_data.get("total_score_total", "0.0")),
+                histogram={int(k): v for k, v in json.loads(stats_data.get("total_score_histogram", "{}")).items()}
+            )
+            updated_total_stats = current_total_stats.add_score(total_score, current_analyses)
+            
+            current_permanence_stats = ScoreStatistics(
+                average=0.0,  # Will be recalculated
+                total=float(stats_data.get("permanence_score_total", "0.0")),
+                histogram={int(k): v for k, v in json.loads(stats_data.get("permanence_score_histogram", "{}")).items()}
+            )
+            updated_permanence_stats = current_permanence_stats.add_score(permanence_score, current_analyses)
+            
+            current_trustlessness_stats = ScoreStatistics(
+                average=0.0,  # Will be recalculated
+                total=float(stats_data.get("trustlessness_score_total", "0.0")),
+                histogram={int(k): v for k, v in json.loads(stats_data.get("trustlessness_score_histogram", "{}")).items()}
+            )
+            updated_trustlessness_stats = current_trustlessness_stats.add_score(trustlessness_score, current_analyses)
+            
+            # Store updated statistics
             pipe.hset(
                 "stats:global",
                 mapping={
                     "total_analyses": str(new_analyses),
-                    "total_score": str(new_total_score),
-                    "average_score": str(round(new_average, 2)),
+                    
+                    # Total score statistics
+                    "total_score_total": str(updated_total_stats.total),
+                    "total_score_histogram": json.dumps(updated_total_stats.histogram),
+                    
+                    # Permanence score statistics
+                    "permanence_score_total": str(updated_permanence_stats.total),
+                    "permanence_score_histogram": json.dumps(updated_permanence_stats.histogram),
+                    
+                    # Trustlessness score statistics
+                    "trustlessness_score_total": str(updated_trustlessness_stats.total),
+                    "trustlessness_score_histogram": json.dumps(updated_trustlessness_stats.histogram),
+                    
                     "last_updated": datetime.now(timezone.utc).isoformat()
                 }
             )
@@ -367,17 +416,46 @@ class RedisManager(DatabaseManagerInterface):
             return None
     
     async def get_global_stats(self) -> Dict[str, Any]:
-        """Get global statistics."""
+        """Get global statistics with detailed score distributions."""
         try:
             if not self.redis:
                 raise RuntimeError("Database not initialized")
             
             stats_data = await self.redis.hgetall("stats:global")
-            return {
-                "total_analyses": int(stats_data.get("total_analyses", "0")),
-                "average_score": float(stats_data.get("average_score", "0.0")),
-                "last_updated": stats_data.get("last_updated", "")
-            }
+            total_analyses = int(stats_data.get("total_analyses", "0"))
+            
+            # Parse histograms from JSON and convert string keys to integers
+            total_histogram = {int(k): v for k, v in json.loads(stats_data.get("total_score_histogram", "{}")).items()}
+            permanence_histogram = {int(k): v for k, v in json.loads(stats_data.get("permanence_score_histogram", "{}")).items()}
+            trustlessness_histogram = {int(k): v for k, v in json.loads(stats_data.get("trustlessness_score_histogram", "{}")).items()}
+            
+            # Create ScoreStatistics models directly
+            total_score_stats = ScoreStatistics(
+                average=round(float(stats_data.get("total_score_total", "0.0")) / total_analyses, 2) if total_analyses > 0 else 0.0,
+                total=float(stats_data.get("total_score_total", "0.0")),
+                histogram=total_histogram
+            )
+            
+            permanence_score_stats = ScoreStatistics(
+                average=round(float(stats_data.get("permanence_score_total", "0.0")) / total_analyses, 2) if total_analyses > 0 else 0.0,
+                total=float(stats_data.get("permanence_score_total", "0.0")),
+                histogram=permanence_histogram
+            )
+            
+            trustlessness_score_stats = ScoreStatistics(
+                average=round(float(stats_data.get("trustlessness_score_total", "0.0")) / total_analyses, 2) if total_analyses > 0 else 0.0,
+                total=float(stats_data.get("trustlessness_score_total", "0.0")),
+                histogram=trustlessness_histogram
+            )
+            
+            # Return StatsResponse model as dict
+            return StatsResponse(
+                total_analyses=total_analyses,
+                total_score_stats=total_score_stats,
+                permanence_score_stats=permanence_score_stats,
+                trustlessness_score_stats=trustlessness_score_stats,
+                last_updated=stats_data.get("last_updated", "")
+            ).model_dump()
             
         except Exception as e:
             logger.error(f"Failed to get global stats: {e}")

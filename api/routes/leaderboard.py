@@ -61,10 +61,6 @@ async def get_stats(api_key: str = Depends(verify_api_key)):
     """Get global statistics."""
     db_manager = await get_database_manager_async()
     stats_data = await db_manager.get_global_stats()
-    return StatsResponse(
-        total_analyses=stats_data.get("total_analyses", 0),
-        average_score=stats_data.get("average_score", 0.0),
-        last_updated=stats_data.get("last_updated", "")
-    )
+    return StatsResponse.model_validate(stats_data)
 
 

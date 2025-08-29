@@ -2,7 +2,7 @@
 Request and response models for the NFT Inspector API.
 """
 
-from typing import List, Optional, Union
+from typing import List, Optional, Union, Dict
 from datetime import datetime
 from pydantic import BaseModel, Field
 
@@ -61,8 +61,37 @@ class LeaderboardResponse(BaseModel):
     pagination: PaginationInfo
 
 
+class ScoreStatistics(BaseModel):
+    """Statistics for a specific score type with full granularity."""
+    average: float
+    total: float  # sum of all scores for accurate average calculation
+    histogram: Dict[int, int]  # score -> count mapping (0-100)
+    
+    def add_score(self, score: int, current_count: int) -> 'ScoreStatistics':
+        """Return a new ScoreStatistics with the score added."""
+        new_count = current_count + 1
+        new_total = self.total + score
+        new_average = round(new_total / new_count, 2)
+        
+        # Update histogram
+        new_histogram = self.histogram.copy()
+        if 0 <= score <= 100:
+            new_histogram[score] = new_histogram.get(score, 0) + 1
+        
+        return ScoreStatistics(
+            average=new_average,
+            total=new_total,
+            histogram=new_histogram
+        )
+
+
 class StatsResponse(BaseModel):
-    """Global statistics response."""
+    """Global statistics response with detailed score distributions."""
     total_analyses: int
-    average_score: float
+    
+    # Detailed score statistics with full granularity
+    total_score_stats: ScoreStatistics
+    permanence_score_stats: ScoreStatistics  
+    trustlessness_score_stats: ScoreStatistics
+    
     last_updated: str
