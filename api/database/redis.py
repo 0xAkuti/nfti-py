@@ -136,17 +136,9 @@ class RedisManager(DatabaseManagerInterface):
             # Update leaderboard if trust analysis exists
             if token_info.trust_analysis:
                 score = token_info.trust_analysis.overall_score
-                
-                # Global leaderboard
-                pipe.zadd("leaderboard:global", {nft_key: score})
-                
-                # Chain-specific leaderboard
-                chain_leaderboard_key = f"leaderboard:chain:{chain_id}"
-                pipe.zadd(chain_leaderboard_key, {nft_key: score})
-                
-                # Collection-specific leaderboard
-                collection_leaderboard_key = f"leaderboard:collection:{chain_id}:{token_info.contract_address.lower()}"
-                pipe.zadd(collection_leaderboard_key, {nft_key: score})
+
+                # Check if collection already exists in leaderboards and update if better score
+                await self._update_leaderboard_with_deduplication(pipe, chain_id, token_info.contract_address, nft_key, score)
             
             # Update collection statistics
             await self._update_collection_stats(collection_key, token_info, collection_name, pipe)
@@ -197,6 +189,37 @@ class RedisManager(DatabaseManagerInterface):
             logger.error(f"Failed to retrieve NFT analysis: {e}")
             raise RuntimeError(f"Failed to retrieve analysis: {e}")
     
+    async def _update_leaderboard_with_deduplication(self, pipe, chain_id: int, contract_address: str, nft_key: str, new_score: float):
+        """Update leaderboards with collection deduplication - skip if collection already exists."""
+        try:
+            # Check if this collection already exists in global leaderboard
+            all_global_entries = await self.redis.zrange("leaderboard:global", 0, -1)
+
+            collection_exists_global = any(
+                entry.startswith(f"nft:{chain_id}:{contract_address.lower()}:")
+                for entry in all_global_entries
+            )
+
+            if not collection_exists_global:
+                # Collection doesn't exist - add it
+                pipe.zadd("leaderboard:global", {nft_key: new_score})
+
+            # Same logic for chain-specific leaderboard
+            chain_leaderboard_key = f"leaderboard:chain:{chain_id}"
+            all_chain_entries = await self.redis.zrange(chain_leaderboard_key, 0, -1)
+
+            collection_exists_chain = any(
+                entry.startswith(f"nft:{chain_id}:{contract_address.lower()}:")
+                for entry in all_chain_entries
+            )
+
+            if not collection_exists_chain:
+                # Collection doesn't exist - add it
+                pipe.zadd(chain_leaderboard_key, {nft_key: new_score})
+
+        except Exception as e:
+            logger.error(f"Failed to update leaderboard with deduplication: {e}")
+
     async def _update_collection_stats(self, collection_key: str, token_info: TokenInfo, collection_name: str, pipe):
         """Update collection statistics."""
         try:
@@ -232,15 +255,29 @@ class RedisManager(DatabaseManagerInterface):
             logger.error(f"Failed to update collection stats: {e}")
     
     async def _update_global_stats(self, token_info: TokenInfo, pipe):
-        """Update global statistics with detailed score distributions."""
+        """Update global statistics with detailed score distributions - count unique collections."""
         try:
-            # Increment analysis counter
-            pipe.incr("analysis_count")
-            
-            # Get current stats
-            stats_data = await self.redis.hgetall("stats:global")
-            current_analyses = int(stats_data.get("total_analyses", "0"))
-            new_analyses = current_analyses + 1
+            chain_id = token_info.trust_analysis.chain_trust.chain_id if token_info.trust_analysis else 1
+            contract_address = token_info.contract_address.lower()
+            collection_key = f"collection:{chain_id}:{contract_address}"
+
+            # Check if this collection has been analyzed before
+            collection_analyzed_key = f"analyzed:{collection_key}"
+            collection_already_analyzed = await self.redis.exists(collection_analyzed_key)
+
+            if not collection_already_analyzed:
+                # Mark collection as analyzed and increment counter
+                pipe.set(collection_analyzed_key, "1")
+                pipe.incr("analysis_count")
+
+                # Get current stats for score calculations
+                stats_data = await self.redis.hgetall("stats:global")
+                current_analyses = int(stats_data.get("total_analyses", "0"))
+                new_analyses = current_analyses + 1
+            else:
+                # Collection already analyzed, just get current stats for score updates
+                stats_data = await self.redis.hgetall("stats:global")
+                new_analyses = int(stats_data.get("total_analyses", "0"))
             
             # Extract scores from trust analysis
             total_score = token_info.trust_analysis.overall_score

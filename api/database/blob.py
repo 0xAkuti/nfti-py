@@ -220,48 +220,46 @@ class BlobManager(DatabaseManagerInterface):
             logger.error(f"Failed to update leaderboards: {e}")
     
     async def _update_single_leaderboard(self, scope: str, chain_id: Optional[int], item: LeaderboardEntry):
-        """Update a single leaderboard with retry logic using a typed item."""
+        """Update a single leaderboard with retry logic using a typed item and collection deduplication."""
         max_retries = 3
         for attempt in range(max_retries):
             try:
                 leaderboard_path = self._get_leaderboard_path(scope, chain_id)
-                
+
                 # Get current leaderboard
                 leaderboard_data = await self._get_blob_json(leaderboard_path) or {"entries": []}
                 entries = leaderboard_data.get("entries", [])
-                
-                # Remove existing entry for same contract/token
-                def _matches(e: Dict[str, Any]) -> bool:
-                    try:
-                        return (
-                            int(e.get("chain_id", -1)) == item.chain_id and
-                            str(e.get("contract_address", "")).lower() == item.contract_address.lower() and
-                            int(e.get("token_id", -1)) == item.token_id
-                        )
-                    except Exception:
-                        return False
 
-                entries = [e for e in entries if not _matches(e)]
+                # Check if collection already exists
+                collection_exists = any(
+                    int(e.get("chain_id", -1)) == item.chain_id and
+                    str(e.get("contract_address", "")).lower() == item.contract_address.lower()
+                    for e in entries
+                )
 
-                # Append validated item dump
+                # If collection exists, skip entirely
+                if collection_exists:
+                    return  # No update needed
+
+                # Append new item
                 entries.append(item.model_dump(mode='json', exclude_defaults=True))
-                
+
                 # Sort by score (descending)
                 entries.sort(key=lambda x: x.get("score", 0), reverse=True)
-                
+
                 # Keep only top 10000 entries to prevent unlimited growth
                 entries = entries[:10000]
-                
+
                 # Update leaderboard
                 leaderboard_data["entries"] = entries
                 leaderboard_data["last_updated"] = datetime.now(timezone.utc).isoformat()
                 leaderboard_data["total_entries"] = len(entries)
-                
+
                 # Store updated leaderboard
                 success = await self._put_blob_json(leaderboard_path, leaderboard_data)
                 if success:
                     break
-                    
+
             except Exception as e:
                 if attempt == max_retries - 1:
                     raise e
@@ -435,12 +433,12 @@ class BlobManager(DatabaseManagerInterface):
             return False
     
     async def _update_global_stats_blob(self, token_info: TokenInfo):
-        """Update global statistics with detailed score distributions."""
+        """Update global statistics with detailed score distributions - count unique collections."""
         max_retries = 3
         for attempt in range(max_retries):
             try:
                 stats_path = self._get_stats_path()
-                
+
                 # Get current stats and parse with Pydantic
                 stats_data = await self._get_blob_json(stats_path)
                 if stats_data:
@@ -453,10 +451,27 @@ class BlobManager(DatabaseManagerInterface):
                         total_score_stats=empty_stats,
                         permanence_score_stats=empty_stats,
                         trustlessness_score_stats=empty_stats,
+                        analyzed_collections=[],
                         last_updated=datetime.now(timezone.utc).isoformat()
                     )
-                
-                new_analyses = current_stats.total_analyses + 1
+
+                # Check if this collection has been analyzed before (stored in same stats file)
+                chain_id = token_info.trust_analysis.chain_trust.chain_id if token_info.trust_analysis else 1
+                contract_address = token_info.contract_address.lower()
+                collection_key = f"{chain_id}:{contract_address}"
+
+                # Get analyzed collections from the same stats file
+                analyzed_collections = current_stats.analyzed_collections
+
+                collection_already_analyzed = collection_key in analyzed_collections
+
+                if not collection_already_analyzed:
+                    # Mark collection as analyzed and increment counter
+                    analyzed_collections.append(collection_key)
+                    new_analyses = current_stats.total_analyses + 1
+                else:
+                    # Collection already analyzed, don't increment counter
+                    new_analyses = current_stats.total_analyses
                 
                 # Extract scores from trust analysis
                 total_score = token_info.trust_analysis.overall_score
@@ -474,6 +489,7 @@ class BlobManager(DatabaseManagerInterface):
                     total_score_stats=updated_total_stats,
                     permanence_score_stats=updated_permanence_stats,
                     trustlessness_score_stats=updated_trustlessness_stats,
+                    analyzed_collections=analyzed_collections,
                     last_updated=datetime.now(timezone.utc).isoformat()
                 )
                 
@@ -594,6 +610,7 @@ class BlobManager(DatabaseManagerInterface):
                     total_score_stats=empty_stats,
                     permanence_score_stats=empty_stats,
                     trustlessness_score_stats=empty_stats,
+                    analyzed_collections=[],
                     last_updated=datetime.now(timezone.utc).isoformat()
                 )
                 return empty_response.model_dump()

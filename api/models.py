@@ -88,10 +88,13 @@ class ScoreStatistics(BaseModel):
 class StatsResponse(BaseModel):
     """Global statistics response with detailed score distributions."""
     total_analyses: int
-    
+
     # Detailed score statistics with full granularity
     total_score_stats: ScoreStatistics
-    permanence_score_stats: ScoreStatistics  
+    permanence_score_stats: ScoreStatistics
     trustlessness_score_stats: ScoreStatistics
-    
+
+    # Track analyzed collections to avoid double-counting
+    analyzed_collections: List[str] = Field(default_factory=list)
+
     last_updated: str
