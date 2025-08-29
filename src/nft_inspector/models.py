@@ -1,6 +1,7 @@
 from typing import Optional, List, Dict, Any
 from pydantic import BaseModel, Field, AliasChoices, model_validator
 from .types import TokenURI, EthereumAddress, DisplayType, MediaProtocol, DataEncoding, WeakTokenURI, ProxyStandard, AccessControlType, GovernanceType, GatewayLevel, Interface, ComplianceReport
+from .trust_models import TrustAnalysisResult
 
 
 
@@ -118,7 +119,7 @@ class TokenInfo(BaseModel):
     access_control_info: Optional[AccessControlInfo] = None
     supported_interfaces: Optional[Dict[Interface, bool]] = None
     compliance_report: Optional[ComplianceReport] = None
-    trust_analysis: Optional[Any] = None
+    trust_analysis: Optional[TrustAnalysisResult] = None
     
     class Config:
         extra = "allow"
