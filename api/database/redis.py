@@ -281,11 +281,9 @@ class RedisManager(DatabaseManagerInterface):
                     stored_at = nft_hash.get("stored_at", "")
                     collection_name = nft_hash.get("collection_name", "Unknown Collection")
 
-                    # Prefer precomputed individual scores (avoid loading full token_info)
-                    permanence_score = nft_hash.get("permanence_score")
-                    trustlessness_score = nft_hash.get("trustlessness_score")
-                    permanence_score = int(permanence_score) if permanence_score not in (None, "", "null") else None
-                    trustlessness_score = int(trustlessness_score) if trustlessness_score not in (None, "", "null") else None
+                    # Get precomputed individual scores
+                    permanence_score = int(nft_hash.get("permanence_score"))
+                    trustlessness_score = int(nft_hash.get("trustlessness_score"))
 
                     results.append(LeaderboardEntry(
                         chain_id=chain_val,

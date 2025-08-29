@@ -195,21 +195,9 @@ class BlobManager(DatabaseManagerInterface):
     async def _update_leaderboards(self, chain_id: int, token_info: TokenInfo, score: float):
         """Update global and chain-specific leaderboards using LeaderboardEntry."""
         try:
-            # Extract individual scores if present
-            permanence_score = None
-            trustlessness_score = None
-            try:
-                permanence = getattr(token_info.trust_analysis, 'permanence', None) if token_info.trust_analysis else None
-                if permanence and hasattr(permanence, 'overall_score'):
-                    permanence_score = permanence.overall_score
-            except Exception:
-                pass
-            try:
-                trustlessness = getattr(token_info.trust_analysis, 'trustlessness', None) if token_info.trust_analysis else None
-                if trustlessness and hasattr(trustlessness, 'overall_score'):
-                    trustlessness_score = trustlessness.overall_score
-            except Exception:
-                pass
+            # Extract individual scores from trust analysis
+            permanence_score = token_info.trust_analysis.permanence.overall_score
+            trustlessness_score = token_info.trust_analysis.trustlessness.overall_score
             # Extract collection name using consistent logic
             collection_name = self.extract_collection_name(token_info)
             

@@ -50,8 +50,8 @@ class LeaderboardEntry(BaseModel):
     token_id: int
     collection_name: str
     score: float
-    permanence_score: Optional[int] = None
-    trustlessness_score: Optional[int] = None
+    permanence_score: int
+    trustlessness_score: int
     stored_at: str
 
 
