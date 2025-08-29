@@ -28,12 +28,6 @@ async def get_leaderboard(
     start = (page - 1) * size
     end = start + size - 1
     
-    # Choose leaderboard based on chain filter
-    if chain_id:
-        leaderboard_key = f"leaderboard:chain:{chain_id}"
-    else:
-        leaderboard_key = "leaderboard:global"
-    
     # Get entries from DB
     db_manager = await get_database_manager_async()
     # Use the generic leaderboard interface

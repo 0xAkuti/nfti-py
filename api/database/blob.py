@@ -210,11 +210,15 @@ class BlobManager(DatabaseManagerInterface):
                     trustlessness_score = trustlessness.overall_score
             except Exception:
                 pass
+            # Extract collection name using consistent logic
+            collection_name = self.extract_collection_name(token_info)
+            
             now_iso = datetime.now(timezone.utc).isoformat()
             item = LeaderboardEntry(
                 chain_id=chain_id,
                 contract_address=token_info.contract_address.lower(),
                 token_id=token_info.token_id,
+                collection_name=collection_name,
                 score=float(score),
                 permanence_score=permanence_score,
                 trustlessness_score=trustlessness_score,

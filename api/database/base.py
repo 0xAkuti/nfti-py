@@ -12,6 +12,32 @@ from ..models import LeaderboardEntry
 
 class DatabaseManagerInterface(ABC):
     """Abstract interface for database operations."""
+    
+    @staticmethod
+    def extract_collection_name(token_info: TokenInfo) -> str:
+        """
+        Extract collection name from TokenInfo with consistent priority:
+        1. contract_metadata.name (contractURI)
+        2. compliance_report.erc721.name (ERC721 name() function)  
+        3. metadata.name (truncated to 50 chars)
+        4. Final fallback: "Unknown Collection"
+        """
+        # Priority 1: contractURI name
+        if token_info.contract_metadata and hasattr(token_info.contract_metadata, 'name') and token_info.contract_metadata.name:
+            return token_info.contract_metadata.name
+        
+        # Priority 2: ERC721 name() function from compliance report
+        if (token_info.compliance_report and 
+            token_info.compliance_report.erc721 and 
+            token_info.compliance_report.erc721.name):
+            return token_info.compliance_report.erc721.name
+        
+        # Priority 3: Individual NFT metadata name (truncated)
+        if token_info.metadata and hasattr(token_info.metadata, 'name') and token_info.metadata.name:
+            return token_info.metadata.name[:50]  # Truncate if too long
+        
+        # Final fallback
+        return "Unknown Collection"
 
     @abstractmethod
     async def initialize(self) -> None:

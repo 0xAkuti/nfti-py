@@ -97,6 +97,9 @@ class RedisManager(DatabaseManagerInterface):
                 permanence_score = None
                 trustlessness_score = None
 
+            # Extract collection name using consistent logic
+            collection_name = self.extract_collection_name(token_info)
+            
             storage_data = {
                 "token_info": token_info_json,
                 "stored_at": datetime.now(timezone.utc).isoformat(),
@@ -104,6 +107,7 @@ class RedisManager(DatabaseManagerInterface):
                 "chain_id": chain_id,
                 "contract_address": token_info.contract_address.lower(),
                 "token_id": token_info.token_id,
+                "collection_name": collection_name,
                 "permanence_score": permanence_score,
                 "trustlessness_score": trustlessness_score,
             }
@@ -130,7 +134,7 @@ class RedisManager(DatabaseManagerInterface):
                 pipe.zadd(collection_leaderboard_key, {nft_key: score})
             
             # Update collection statistics
-            await self._update_collection_stats(collection_key, token_info, pipe)
+            await self._update_collection_stats(collection_key, token_info, collection_name, pipe)
             
             # Update global statistics
             await self._update_global_stats(token_info, pipe)
@@ -178,18 +182,13 @@ class RedisManager(DatabaseManagerInterface):
             logger.error(f"Failed to retrieve NFT analysis: {e}")
             raise RuntimeError(f"Failed to retrieve analysis: {e}")
     
-    async def _update_collection_stats(self, collection_key: str, token_info: TokenInfo, pipe):
+    async def _update_collection_stats(self, collection_key: str, token_info: TokenInfo, collection_name: str, pipe):
         """Update collection statistics."""
         try:
             # Get current collection data
             collection_data = await self.redis.hgetall(collection_key)
             
-            # Extract collection info from token
-            collection_name = ""
-            if token_info.contract_metadata and hasattr(token_info.contract_metadata, 'name'):
-                collection_name = token_info.contract_metadata.name
-            elif token_info.metadata and hasattr(token_info.metadata, 'name'):
-                collection_name = token_info.metadata.name[:50]  # Truncate if too long
+            # Collection name is already extracted in store_nft_analysis
             
             # Calculate new statistics
             current_count = int(collection_data.get("token_count", "0"))
@@ -280,6 +279,7 @@ class RedisManager(DatabaseManagerInterface):
                     contract_val = (nft_hash.get("contract_address") or "").lower()
                     token_val = int(nft_hash.get("token_id", "0"))
                     stored_at = nft_hash.get("stored_at", "")
+                    collection_name = nft_hash.get("collection_name", "Unknown Collection")
 
                     # Prefer precomputed individual scores (avoid loading full token_info)
                     permanence_score = nft_hash.get("permanence_score")
@@ -291,6 +291,7 @@ class RedisManager(DatabaseManagerInterface):
                         chain_id=chain_val,
                         contract_address=contract_val,
                         token_id=token_val,
+                        collection_name=collection_name,
                         score=float(score),
                         permanence_score=permanence_score,
                         trustlessness_score=trustlessness_score,
