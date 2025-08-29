@@ -2,11 +2,11 @@
 Request and response models for the NFT Inspector API.
 """
 
-from typing import List, Optional
+from typing import List, Optional, Union
 from datetime import datetime
 from pydantic import BaseModel, Field
 
-from src.nft_inspector.models import TokenInfo
+from src.nft_inspector.models import TokenInfo, NFTInspectionResult
 
 
 class AnalysisRequest(BaseModel):
@@ -26,7 +26,7 @@ class HealthResponse(BaseModel):
 
 class AnalysisResponse(BaseModel):
     """NFT analysis response."""
-    data: TokenInfo
+    data: Union[TokenInfo, NFTInspectionResult]
     from_storage: bool = False
 
 

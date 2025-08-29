@@ -6,7 +6,7 @@ from abc import ABC, abstractmethod
 from typing import Optional, List, Dict, Any, Tuple
 from datetime import datetime
 
-from src.nft_inspector.models import TokenInfo
+from src.nft_inspector.models import TokenInfo, NFTInspectionResult
 from ..models import LeaderboardEntry
 
 
@@ -63,7 +63,7 @@ class DatabaseManagerInterface(ABC):
         pass
 
     @abstractmethod
-    async def get_nft_analysis(self, chain_id: int, contract_address: str, token_id: int) -> Optional[TokenInfo]:
+    async def get_nft_analysis(self, chain_id: int, contract_address: str, token_id: int) -> Optional[NFTInspectionResult]:
         """
         Retrieve NFT analysis from database.
         
@@ -73,7 +73,7 @@ class DatabaseManagerInterface(ABC):
             token_id: Token ID
             
         Returns:
-            TokenInfo if found, None otherwise
+            NFTInspectionResult if found (with guaranteed core fields), None otherwise
         """
         pass
 

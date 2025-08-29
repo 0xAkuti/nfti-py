@@ -125,6 +125,29 @@ class TokenInfo(BaseModel):
         extra = "allow"
 
 
+class NFTInspectionResult(BaseModel):
+    """Complete NFT inspection result with guaranteed core fields and optional contract-specific fields."""
+    contract_address: EthereumAddress
+    # Core NFT fields - guaranteed to be present for every stored analysis
+    token_id: int
+    token_uri: TokenURI
+    metadata: NFTMetadata
+    data_report: TokenDataReport
+    access_control_info: AccessControlInfo
+    supported_interfaces: Dict[Interface, bool]
+    compliance_report: ComplianceReport
+    trust_analysis: TrustAnalysisResult
+    
+    # Contract-specific fields - may not exist for every contract
+    contract_uri: Optional[TokenURI] = None
+    contract_metadata: Optional["ContractURI"] = None
+    contract_data_report: Optional[ContractDataReport] = None
+    proxy_info: Optional[ProxyInfo] = None
+    
+    class Config:
+        extra = "allow"
+
+
 class ContractURI(BaseModel):
     name: str
     symbol: Optional[str] = None # prefer ERC721 metadata over this

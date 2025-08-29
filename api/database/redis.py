@@ -8,7 +8,7 @@ from datetime import datetime, timezone
 from typing import Optional, List, Dict, Any, Tuple
 import redis.asyncio as redis
 
-from src.nft_inspector.models import TokenInfo
+from src.nft_inspector.models import TokenInfo, NFTInspectionResult
 from .base import DatabaseManagerInterface
 from ..models import LeaderboardEntry
 
@@ -149,7 +149,7 @@ class RedisManager(DatabaseManagerInterface):
             logger.error(f"Failed to store NFT analysis: {e}")
             raise RuntimeError(f"Failed to store analysis: {e}")
     
-    async def get_nft_analysis(self, chain_id: int, contract_address: str, token_id: int) -> Optional[TokenInfo]:
+    async def get_nft_analysis(self, chain_id: int, contract_address: str, token_id: int) -> Optional[NFTInspectionResult]:
         """
         Retrieve NFT analysis from database.
         
@@ -159,7 +159,7 @@ class RedisManager(DatabaseManagerInterface):
             token_id: Token ID
             
         Returns:
-            TokenInfo if found, None otherwise
+            NFTInspectionResult if found (with guaranteed core fields), None otherwise
         """
         try:
             if not self.redis:
@@ -176,7 +176,7 @@ class RedisManager(DatabaseManagerInterface):
             if not token_info_data:
                 return None
             
-            return TokenInfo.model_validate(token_info_data)
+            return NFTInspectionResult.model_validate(token_info_data)
             
         except Exception as e:
             logger.error(f"Failed to retrieve NFT analysis: {e}")
