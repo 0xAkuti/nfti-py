@@ -7,13 +7,36 @@ from enum import Enum
 from pydantic import BaseModel, Field
 
 
+class PermanenceLevel(str, Enum):
+    """Permanence dimension for NFT data storage"""
+    ONCHAIN = "Onchain"          # All data stored on-chain (data URIs)
+    DISTRIBUTED = "Distributed"   # Data stored on distributed protocols (IPFS, Arweave)
+    HOSTED = "Hosted"            # Data stored on centralized hosting
+
+
+class TrustlessnessLevel(str, Enum):
+    """Trustlessness dimension for NFT control and governance"""
+    IMMUTABLE = "Immutable"       # No owner, no upgradeability, fully decentralized
+    GOVERNED = "Governed"         # Controlled by multisig/timelock/governance
+    CONTROLLED = "Controlled"     # Controlled by single entity or simple owner
+
+
 class TrustLevel(str, Enum):
-    """Trust level classifications for NFT analysis (0-100 scale)"""
-    EXCELLENT = "excellent"      # 90-100: Fully on-chain, renounced, no dependencies
-    GOOD = "good"               # 70-89: Mostly decentralized, minimal trust assumptions
-    MODERATE = "moderate"       # 50-69: Mixed approach, some centralized components
-    POOR = "poor"              # 30-49: Mostly centralized, significant trust assumptions
-    CRITICAL = "critical"      # 0-29: Fully centralized, high dependency risk
+    """Combined trust level classifications (Permanence-Trustlessness format)"""
+    # High permanence, high trustlessness
+    ONCHAIN_IMMUTABLE = "Onchain-Immutable"
+    ONCHAIN_GOVERNED = "Onchain-Governed"
+    DISTRIBUTED_IMMUTABLE = "Distributed-Immutable"
+    DISTRIBUTED_GOVERNED = "Distributed-Governed"
+
+    # Medium permanence
+    ONCHAIN_CONTROLLED = "Onchain-Controlled"
+    DISTRIBUTED_CONTROLLED = "Distributed-Controlled"
+    HOSTED_IMMUTABLE = "Hosted-Immutable"
+    HOSTED_GOVERNED = "Hosted-Governed"
+
+    # Low permanence, low trustlessness
+    HOSTED_CONTROLLED = "Hosted-Controlled"
 
 
 class AssumptionSeverity(str, Enum):
@@ -48,15 +71,27 @@ class PermanenceScore(BaseModel):
     image_score: int          # Score for image storage
     animation_score: int      # Score for animation storage
     contract_metadata_score: int  # Score for contractURI storage
-    
+
     # Modifiers and penalties
     chain_penalty: float = 0.0        # Penalty for L2/sidechain dependencies
-    
+
     # Analysis details
     is_fully_onchain: bool     # True if all data is on-chain (data URIs)
     has_external_deps: bool    # True if SVG/HTML has external dependencies
     weakest_component: str     # Which component has the lowest score
     protocol_breakdown: Dict[str, str]  # Protocol used for each component
+
+    # Derived level
+    permanence_level: PermanenceLevel  # Permanence classification
+
+    def _get_permanence_level(self) -> PermanenceLevel:
+        """Determine permanence level based on overall score"""
+        if self.overall_score >= 80:
+            return PermanenceLevel.ONCHAIN
+        elif self.overall_score >= 50:
+            return PermanenceLevel.DISTRIBUTED
+        else:
+            return PermanenceLevel.HOSTED
 
 
 class TrustlessnessScore(BaseModel):
@@ -64,20 +99,32 @@ class TrustlessnessScore(BaseModel):
     overall_score: int         # 0-100 composite score
     access_control_score: int  # Score based on contract control (merged access control and governance)
     upgradeability_score: int  # Score based on proxy/upgrade patterns
-    
+
     # Analysis details
     has_owner: bool           # Contract has an owner
     owner_type: str          # Type of owner (EOA, multisig, timelock, renounced)
     is_upgradeable: bool     # Contract can be upgraded
     proxy_type: Optional[str] = None  # Type of proxy if applicable
-    
+
     # ENS information for transparency
     owner_ens: Optional[str] = None     # ENS name of owner if available
     admin_ens: Optional[str] = None     # ENS name of admin if available
-    
+
     # Governance details
     governance_transparency: int  # 0-10 score for governance transparency
     timelock_delay: Optional[int] = None  # Timelock delay in seconds if applicable
+
+    # Derived level
+    trustlessness_level: TrustlessnessLevel  # Trustlessness classification
+
+    def _get_trustlessness_level(self) -> TrustlessnessLevel:
+        """Determine trustlessness level based on overall score"""
+        if self.overall_score >= 80:
+            return TrustlessnessLevel.IMMUTABLE
+        elif self.overall_score >= 50:
+            return TrustlessnessLevel.GOVERNED
+        else:
+            return TrustlessnessLevel.CONTROLLED
 
 
 class ChainTrustScore(BaseModel):
@@ -93,8 +140,8 @@ class TrustAnalysisResult(BaseModel):
     # Overall scores
     overall_score: int                    # 0-100 weighted composite score
     overall_level: TrustLevel            # Classification based on score
-    
-    # Component scores
+
+    # Component scores (now include their individual levels)
     permanence: PermanenceScore
     trustlessness: TrustlessnessScore
     chain_trust: ChainTrustScore
@@ -147,14 +194,38 @@ class TrustAnalysisResult(BaseModel):
             }
         }
     
+    def _get_combined_trust_level(self) -> TrustLevel:
+        """Get the combined trust level from permanence and trustlessness levels"""
+        permanence = self.permanence.permanence_level
+        trustlessness = self.trustlessness.trustlessness_level
+
+        # Create mapping from permanence-trustlessness combinations to TrustLevel
+        level_map = {
+            (PermanenceLevel.ONCHAIN, TrustlessnessLevel.IMMUTABLE): TrustLevel.ONCHAIN_IMMUTABLE,
+            (PermanenceLevel.ONCHAIN, TrustlessnessLevel.GOVERNED): TrustLevel.ONCHAIN_GOVERNED,
+            (PermanenceLevel.ONCHAIN, TrustlessnessLevel.CONTROLLED): TrustLevel.ONCHAIN_CONTROLLED,
+            (PermanenceLevel.DISTRIBUTED, TrustlessnessLevel.IMMUTABLE): TrustLevel.DISTRIBUTED_IMMUTABLE,
+            (PermanenceLevel.DISTRIBUTED, TrustlessnessLevel.GOVERNED): TrustLevel.DISTRIBUTED_GOVERNED,
+            (PermanenceLevel.DISTRIBUTED, TrustlessnessLevel.CONTROLLED): TrustLevel.DISTRIBUTED_CONTROLLED,
+            (PermanenceLevel.HOSTED, TrustlessnessLevel.IMMUTABLE): TrustLevel.HOSTED_IMMUTABLE,
+            (PermanenceLevel.HOSTED, TrustlessnessLevel.GOVERNED): TrustLevel.HOSTED_GOVERNED,
+            (PermanenceLevel.HOSTED, TrustlessnessLevel.CONTROLLED): TrustLevel.HOSTED_CONTROLLED,
+        }
+
+        return level_map.get((permanence, trustlessness), TrustLevel.HOSTED_CONTROLLED)
+
     def get_summary(self) -> str:
         """Get a human-readable summary of the analysis"""
         level_descriptions = {
-            TrustLevel.EXCELLENT: "Excellent - Fully decentralized and trustless",
-            TrustLevel.GOOD: "Good - Mostly decentralized with minimal trust assumptions", 
-            TrustLevel.MODERATE: "Moderate - Mixed approach with some centralized components",
-            TrustLevel.POOR: "Poor - Mostly centralized with significant trust requirements",
-            TrustLevel.CRITICAL: "Critical - Fully centralized with high dependency risk"
+            TrustLevel.ONCHAIN_IMMUTABLE: "Onchain-Immutable - Fully decentralized, all data on-chain with no control",
+            TrustLevel.ONCHAIN_GOVERNED: "Onchain-Governed - All data on-chain with decentralized governance",
+            TrustLevel.ONCHAIN_CONTROLLED: "Onchain-Controlled - All data on-chain but controlled by single entity",
+            TrustLevel.DISTRIBUTED_IMMUTABLE: "Distributed-Immutable - Data on distributed protocols with no control",
+            TrustLevel.DISTRIBUTED_GOVERNED: "Distributed-Governed - Data on distributed protocols with governance",
+            TrustLevel.DISTRIBUTED_CONTROLLED: "Distributed-Controlled - Data on distributed protocols but controlled",
+            TrustLevel.HOSTED_IMMUTABLE: "Hosted-Immutable - Data on centralized hosting with no control",
+            TrustLevel.HOSTED_GOVERNED: "Hosted-Governed - Data on centralized hosting with governance",
+            TrustLevel.HOSTED_CONTROLLED: "Hosted-Controlled - Data on centralized hosting with single control"
         }
-        
+
         return f"{self.overall_score}/100 - {level_descriptions[self.overall_level]}"

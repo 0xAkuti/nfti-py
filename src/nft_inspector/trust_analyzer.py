@@ -12,8 +12,9 @@ from datetime import datetime, timezone
 from urllib.parse import urlparse
 
 from .trust_models import (
-    TrustLevel, TrustAnalysisResult, PermanenceScore, TrustlessnessScore, 
-    ChainTrustScore, TrustAssumption, AssumptionSeverity, L2BeatData
+    TrustLevel, PermanenceLevel, TrustlessnessLevel, TrustAnalysisResult,
+    PermanenceScore, TrustlessnessScore, ChainTrustScore, TrustAssumption,
+    AssumptionSeverity, L2BeatData
 )
 from .models import TokenInfo, UrlInfo
 from .types import AccessControlType, GovernanceType, ProxyStandard
@@ -135,9 +136,6 @@ class TrustAnalyzer:
                       trustlessness.overall_score * self.TRUSTLESSNESS_WEIGHT)
         overall_score = max(0, min(100, round(overall_raw)))
         
-        # Determine trust level
-        overall_level = self._score_to_trust_level(overall_score)
-        
         # Generate trust assumptions and recommendations
         assumptions = self._generate_trust_assumptions(token_info, permanence, trustlessness, chain_trust)
         recommendations = self._generate_recommendations(token_info, permanence, trustlessness)
@@ -146,9 +144,10 @@ class TrustAnalyzer:
         key_risks = self._identify_key_risks(token_info, permanence, trustlessness, chain_trust)
         strengths = self._identify_strengths(token_info, permanence, trustlessness, chain_trust)
         
-        return TrustAnalysisResult(
+        # Create result with temporary overall level, then set the correct combined level
+        result = TrustAnalysisResult(
             overall_score=overall_score,
-            overall_level=overall_level,
+            overall_level=TrustLevel.HOSTED_CONTROLLED,  # temporary, will be updated
             permanence=permanence,
             trustlessness=trustlessness,
             chain_trust=chain_trust,
@@ -160,6 +159,11 @@ class TrustAnalyzer:
             trustlessness_weight=self.TRUSTLESSNESS_WEIGHT,
             timestamp=datetime.now(timezone.utc).isoformat()
         )
+
+        # Set the correct combined level using the levels from the individual models
+        result.overall_level = result._get_combined_trust_level()
+
+        return result
     
     def _analyze_permanence(self, token_info: TokenInfo) -> PermanenceScore:
         """Analyze data permanence across all token components with simplified gating system"""
@@ -226,7 +230,8 @@ class TrustAnalyzer:
             "contract_metadata": self._get_url_protocol_name(token_info.contract_data_report.contract_uri if token_info.contract_data_report else None)
         }
         
-        return PermanenceScore(
+        # Create permanence score with temporary level, then set the correct level
+        permanence_score = PermanenceScore(
             overall_score=overall_score,
             metadata_score=metadata_score,
             image_score=gated_image_score,
@@ -236,8 +241,14 @@ class TrustAnalyzer:
             is_fully_onchain=is_fully_onchain,
             has_external_deps=has_external_deps,
             weakest_component=weakest_component,
-            protocol_breakdown=protocol_breakdown
+            protocol_breakdown=protocol_breakdown,
+            permanence_level=PermanenceLevel.HOSTED  # temporary, will be updated
         )
+
+        # Set the correct permanence level
+        permanence_score.permanence_level = permanence_score._get_permanence_level()
+
+        return permanence_score
     
     def _get_url_protocol_score(self, url_info: Optional[UrlInfo], gate_by_dependencies: bool = True) -> int:
         """Get protocol score for a URL, returning 0 if None"""
@@ -322,7 +333,8 @@ class TrustAnalyzer:
             admin_ens = token_info.access_control_info.admin_ens_name
             timelock_delay = token_info.access_control_info.timelock_delay
         
-        return TrustlessnessScore(
+        # Create trustlessness score with temporary level, then set the correct level
+        trustlessness_score = TrustlessnessScore(
             overall_score=overall_score,
             access_control_score=control_score,
             upgradeability_score=upgradeability_score,
@@ -333,8 +345,14 @@ class TrustAnalyzer:
             owner_ens=owner_ens,
             admin_ens=admin_ens,
             governance_transparency=governance_transparency,
-            timelock_delay=timelock_delay
+            timelock_delay=timelock_delay,
+            trustlessness_level=TrustlessnessLevel.CONTROLLED  # temporary, will be updated
         )
+
+        # Set the correct trustlessness level
+        trustlessness_score.trustlessness_level = trustlessness_score._get_trustlessness_level()
+
+        return trustlessness_score
     
     def _score_contract_control(self, access_control_info: Optional[Any]) -> Tuple[int, bool, str, int]:
         """Score contract control patterns (merged access control and governance) and return (score, has_owner, owner_type, transparency)"""
@@ -435,18 +453,7 @@ class TrustAnalyzer:
             l2beat_stage=l2beat_stage
         )
     
-    def _score_to_trust_level(self, score: int) -> TrustLevel:
-        """Convert numeric score to trust level"""
-        if score >= 90:
-            return TrustLevel.EXCELLENT
-        elif score >= 70:
-            return TrustLevel.GOOD
-        elif score >= 50:
-            return TrustLevel.MODERATE
-        elif score >= 30:
-            return TrustLevel.POOR
-        else:
-            return TrustLevel.CRITICAL
+
     
     def _generate_trust_assumptions(self, token_info: TokenInfo, _permanence: PermanenceScore, 
                                   trustlessness: TrustlessnessScore, chain_trust: ChainTrustScore) -> List[TrustAssumption]:
