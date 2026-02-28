@@ -17,7 +17,7 @@ from .trust_models import (
     AssumptionSeverity, L2BeatData
 )
 from .models import TokenInfo, UrlInfo
-from .types import AccessControlType, GovernanceType, ProxyStandard
+from .types import GovernanceType, ProxyStandard
 from .chains.chain_models import ChainInfo
 
 
@@ -31,6 +31,8 @@ class TrustAnalyzer:
     # Configurable scoring weights
     PERMANENCE_WEIGHT = 0.7
     TRUSTLESSNESS_WEIGHT = 0.3
+    CONTRACT_CONTROL_WEIGHT = 0.8
+    UPGRADEABILITY_WEIGHT = 0.2
     
     # Chain penalty multipliers for permanence scoring - only mainnet gets 0.0
     CHAIN_PENALTIES = {
@@ -144,10 +146,12 @@ class TrustAnalyzer:
         key_risks = self._identify_key_risks(token_info, permanence, trustlessness, chain_trust)
         strengths = self._identify_strengths(token_info, permanence, trustlessness, chain_trust)
         
-        # Create result with temporary overall level, then set the correct combined level
+        # Create result with the correct combined trust level
+        combined_level = self._get_combined_trust_level_from_scores(permanence.permanence_level, trustlessness.trustlessness_level)
+
         result = TrustAnalysisResult(
             overall_score=overall_score,
-            overall_level=TrustLevel.HOSTED_CONTROLLED,  # temporary, will be updated
+            overall_level=combined_level,
             permanence=permanence,
             trustlessness=trustlessness,
             chain_trust=chain_trust,
@@ -160,10 +164,23 @@ class TrustAnalyzer:
             timestamp=datetime.now(timezone.utc).isoformat()
         )
 
-        # Set the correct combined level using the levels from the individual models
-        result.overall_level = result._get_combined_trust_level()
-
         return result
+
+    def _get_combined_trust_level_from_scores(self, permanence: PermanenceLevel, trustlessness: TrustlessnessLevel) -> TrustLevel:
+        """Get the combined trust level from permanence and trustlessness levels"""
+        level_map = {
+            (PermanenceLevel.ONCHAIN, TrustlessnessLevel.IMMUTABLE): TrustLevel.ONCHAIN_IMMUTABLE,
+            (PermanenceLevel.ONCHAIN, TrustlessnessLevel.GOVERNED): TrustLevel.ONCHAIN_GOVERNED,
+            (PermanenceLevel.ONCHAIN, TrustlessnessLevel.CONTROLLED): TrustLevel.ONCHAIN_CONTROLLED,
+            (PermanenceLevel.DISTRIBUTED, TrustlessnessLevel.IMMUTABLE): TrustLevel.DISTRIBUTED_IMMUTABLE,
+            (PermanenceLevel.DISTRIBUTED, TrustlessnessLevel.GOVERNED): TrustLevel.DISTRIBUTED_GOVERNED,
+            (PermanenceLevel.DISTRIBUTED, TrustlessnessLevel.CONTROLLED): TrustLevel.DISTRIBUTED_CONTROLLED,
+            (PermanenceLevel.HOSTED, TrustlessnessLevel.IMMUTABLE): TrustLevel.HOSTED_IMMUTABLE,
+            (PermanenceLevel.HOSTED, TrustlessnessLevel.GOVERNED): TrustLevel.HOSTED_GOVERNED,
+            (PermanenceLevel.HOSTED, TrustlessnessLevel.CONTROLLED): TrustLevel.HOSTED_CONTROLLED,
+        }
+
+        return level_map.get((permanence, trustlessness), TrustLevel.HOSTED_CONTROLLED)
     
     def _analyze_permanence(self, token_info: TokenInfo) -> PermanenceScore:
         """Analyze data permanence across all token components with simplified gating system"""
@@ -230,7 +247,7 @@ class TrustAnalyzer:
             "contract_metadata": self._get_url_protocol_name(token_info.contract_data_report.contract_uri if token_info.contract_data_report else None)
         }
         
-        # Create permanence score with temporary level, then set the correct level
+        # Create permanence score with the correct level
         permanence_score = PermanenceScore(
             overall_score=overall_score,
             metadata_score=metadata_score,
@@ -242,13 +259,19 @@ class TrustAnalyzer:
             has_external_deps=has_external_deps,
             weakest_component=weakest_component,
             protocol_breakdown=protocol_breakdown,
-            permanence_level=PermanenceLevel.HOSTED  # temporary, will be updated
+            permanence_level=self._get_permanence_level_from_score(overall_score)
         )
 
-        # Set the correct permanence level
-        permanence_score.permanence_level = permanence_score._get_permanence_level()
-
         return permanence_score
+
+    def _get_permanence_level_from_score(self, score: int) -> PermanenceLevel:
+        """Determine permanence level based on score (static method for cleaner code)"""
+        if score >= 80:
+            return PermanenceLevel.ONCHAIN
+        elif score >= 50:
+            return PermanenceLevel.DISTRIBUTED
+        else:
+            return PermanenceLevel.HOSTED
     
     def _get_url_protocol_score(self, url_info: Optional[UrlInfo], gate_by_dependencies: bool = True) -> int:
         """Get protocol score for a URL, returning 0 if None"""
@@ -316,11 +339,11 @@ class TrustAnalyzer:
         # Analyze upgradeability/proxy risks
         upgradeability_score, is_upgradeable, proxy_type = self._score_upgradeability(token_info.proxy_info)
         
-        # Calculate weighted overall score
-        # Contract control is primary concern, then proxy/upgrade risks
+        # Calculate weighted overall score with simple linear combination.
+        # Contract control is primary concern, then proxy/upgrade risks.
         overall_score = round(
-            0.7 * control_score + 
-            0.3 * upgradeability_score
+            self.CONTRACT_CONTROL_WEIGHT * control_score +
+            self.UPGRADEABILITY_WEIGHT * upgradeability_score
         )
         
         # Get ENS information
@@ -333,7 +356,7 @@ class TrustAnalyzer:
             admin_ens = token_info.access_control_info.admin_ens_name
             timelock_delay = token_info.access_control_info.timelock_delay
         
-        # Create trustlessness score with temporary level, then set the correct level
+        # Create trustlessness score with the correct level
         trustlessness_score = TrustlessnessScore(
             overall_score=overall_score,
             access_control_score=control_score,
@@ -346,13 +369,19 @@ class TrustAnalyzer:
             admin_ens=admin_ens,
             governance_transparency=governance_transparency,
             timelock_delay=timelock_delay,
-            trustlessness_level=TrustlessnessLevel.CONTROLLED  # temporary, will be updated
+            trustlessness_level=self._get_trustlessness_level_from_score(overall_score)
         )
 
-        # Set the correct trustlessness level
-        trustlessness_score.trustlessness_level = trustlessness_score._get_trustlessness_level()
-
         return trustlessness_score
+
+    def _get_trustlessness_level_from_score(self, score: int) -> TrustlessnessLevel:
+        """Determine trustlessness level based on score (static method for cleaner code)"""
+        if score >= 80:
+            return TrustlessnessLevel.IMMUTABLE
+        elif score >= 50:
+            return TrustlessnessLevel.GOVERNED
+        else:
+            return TrustlessnessLevel.CONTROLLED
     
     def _score_contract_control(self, access_control_info: Optional[Any]) -> Tuple[int, bool, str, int]:
         """Score contract control patterns (merged access control and governance) and return (score, has_owner, owner_type, transparency)"""
@@ -363,7 +392,8 @@ class TrustAnalyzer:
         has_owner = access_control_info.has_owner or access_control_info.has_roles
         transparency = 100
 
-        # Determine owner type from governance type and actual ownership
+        # Determine owner type from governance type and actual ownership.
+        # Keep this simple: governance type maps directly to a base score.
         if not has_owner:
             owner_type = "none"
             score = 100  # No owner = best score
@@ -374,36 +404,25 @@ class TrustAnalyzer:
             transparency = 100
         elif access_control_info.governance_type == GovernanceType.EOA:
             owner_type = "eoa"
-            score = 30   # Worst case - single EOA control
+            score = 20   # Worst case - single EOA control
             transparency = 20  # Low transparency for EOA
         elif access_control_info.governance_type == GovernanceType.MULTISIG:
             owner_type = "multisig"
-            score = 60   # Better - requires multiple signatures
+            score = 70   # Better - requires multiple signatures
             transparency = 60  # Moderate transparency
         elif access_control_info.governance_type == GovernanceType.TIMELOCK:
             owner_type = "timelock"
-            score = 80   # Good - time-delayed execution
+            score = 85   # Good - time-delayed execution
             transparency = 80  # Good transparency
         elif access_control_info.governance_type == GovernanceType.CONTRACT:
             owner_type = "contract"
-            score = 50   # Unknown contract behavior
+            score = 45   # Unknown contract behavior
             transparency = 40  # Low transparency without analysis
         else:
             owner_type = "unknown"
             score = 40   # Conservative scoring for unknown types
             transparency = 30
-        
-        # Access control type adjustments
-        if access_control_info.access_control_type:
-            if access_control_info.access_control_type == AccessControlType.ACCESS_CONTROL:
-                # Role-based access is generally better than single owner
-                score = min(score + 10, 100)
-                transparency = min(transparency + 20, 100)
-            elif access_control_info.access_control_type == AccessControlType.TIMELOCK:
-                # Timelock governance gets bonus
-                score = min(score + 20, 100)
-                transparency = min(transparency + 20, 100)
-        
+
         return score, has_owner, owner_type, transparency
     
     
@@ -425,7 +444,7 @@ class TrustAnalyzer:
         # Upgradeable proxy - severe scoring for tokenURI risk
         proxy_scores = {
             ProxyStandard.EIP_1167_MINIMAL: 90,     # Clone - usually safe for tokenURI
-            ProxyStandard.EIP_1967_TRANSPARENT: 30, # Admin can change tokenURI implementation
+            ProxyStandard.EIP_1967_TRANSPARENT: 35, # Admin can change tokenURI implementation
             ProxyStandard.EIP_1822_UUPS: 20,        # Self-upgrade can modify tokenURI function
             ProxyStandard.BEACON_PROXY: 20,         # Central beacon can change tokenURI behavior
             ProxyStandard.EIP_2535_DIAMOND: 20,     # Complex facets - highest tokenURI risk

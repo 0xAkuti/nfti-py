@@ -26,16 +26,16 @@ class TrustLevel(str, Enum):
     # High permanence, high trustlessness
     ONCHAIN_IMMUTABLE = "Onchain-Immutable"
     ONCHAIN_GOVERNED = "Onchain-Governed"
-    DISTRIBUTED_IMMUTABLE = "Distributed-Immutable"
-    DISTRIBUTED_GOVERNED = "Distributed-Governed"
+    ONCHAIN_CONTROLLED = "Onchain-Controlled"
 
     # Medium permanence
-    ONCHAIN_CONTROLLED = "Onchain-Controlled"
+    DISTRIBUTED_IMMUTABLE = "Distributed-Immutable"
+    DISTRIBUTED_GOVERNED = "Distributed-Governed"
     DISTRIBUTED_CONTROLLED = "Distributed-Controlled"
-    HOSTED_IMMUTABLE = "Hosted-Immutable"
-    HOSTED_GOVERNED = "Hosted-Governed"
 
     # Low permanence, low trustlessness
+    HOSTED_IMMUTABLE = "Hosted-Immutable"
+    HOSTED_GOVERNED = "Hosted-Governed"
     HOSTED_CONTROLLED = "Hosted-Controlled"
 
 
@@ -147,7 +147,7 @@ class TrustAnalysisResult(BaseModel):
     chain_trust: ChainTrustScore
     
     # Analysis metadata
-    analysis_version: str = "1.0"        # Version of analysis algorithm
+    analysis_version: str = "1.1"        # Version of analysis algorithm
     timestamp: Optional[str] = None       # When analysis was performed
     
     # Findings
@@ -194,25 +194,7 @@ class TrustAnalysisResult(BaseModel):
             }
         }
     
-    def _get_combined_trust_level(self) -> TrustLevel:
-        """Get the combined trust level from permanence and trustlessness levels"""
-        permanence = self.permanence.permanence_level
-        trustlessness = self.trustlessness.trustlessness_level
 
-        # Create mapping from permanence-trustlessness combinations to TrustLevel
-        level_map = {
-            (PermanenceLevel.ONCHAIN, TrustlessnessLevel.IMMUTABLE): TrustLevel.ONCHAIN_IMMUTABLE,
-            (PermanenceLevel.ONCHAIN, TrustlessnessLevel.GOVERNED): TrustLevel.ONCHAIN_GOVERNED,
-            (PermanenceLevel.ONCHAIN, TrustlessnessLevel.CONTROLLED): TrustLevel.ONCHAIN_CONTROLLED,
-            (PermanenceLevel.DISTRIBUTED, TrustlessnessLevel.IMMUTABLE): TrustLevel.DISTRIBUTED_IMMUTABLE,
-            (PermanenceLevel.DISTRIBUTED, TrustlessnessLevel.GOVERNED): TrustLevel.DISTRIBUTED_GOVERNED,
-            (PermanenceLevel.DISTRIBUTED, TrustlessnessLevel.CONTROLLED): TrustLevel.DISTRIBUTED_CONTROLLED,
-            (PermanenceLevel.HOSTED, TrustlessnessLevel.IMMUTABLE): TrustLevel.HOSTED_IMMUTABLE,
-            (PermanenceLevel.HOSTED, TrustlessnessLevel.GOVERNED): TrustLevel.HOSTED_GOVERNED,
-            (PermanenceLevel.HOSTED, TrustlessnessLevel.CONTROLLED): TrustLevel.HOSTED_CONTROLLED,
-        }
-
-        return level_map.get((permanence, trustlessness), TrustLevel.HOSTED_CONTROLLED)
 
     def get_summary(self) -> str:
         """Get a human-readable summary of the analysis"""
