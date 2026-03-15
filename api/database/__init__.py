@@ -11,6 +11,7 @@ from .base import DatabaseManagerInterface
 if TYPE_CHECKING:
     from .redis import RedisManager
     from .blob import BlobManager
+    from .supabase import SupabaseManager
 
 logger = logging.getLogger(__name__)
 
@@ -44,7 +45,7 @@ def create_database_manager(backend: str, **kwargs) -> DatabaseManagerInterface:
     Factory function to create database manager instances.
     
     Args:
-        backend: Database backend type ("redis" or "blob")
+        backend: Database backend type ("redis", "blob", or "supabase")
         **kwargs: Backend-specific configuration parameters
         
     Returns:
@@ -74,8 +75,19 @@ def create_database_manager(backend: str, **kwargs) -> DatabaseManagerInterface:
         except ImportError as e:
             raise ImportError(f"Blob backend requires 'vercel_blob' package: {e}")
     
+    elif backend == "supabase":
+        try:
+            from .supabase import SupabaseManager
+            supabase_url = kwargs.get('supabase_url')
+            supabase_key = kwargs.get('supabase_key')
+            if not supabase_url or not supabase_key:
+                raise ValueError("supabase_url and supabase_key are required for Supabase backend")
+            return SupabaseManager(supabase_url=supabase_url, supabase_key=supabase_key)
+        except ImportError as e:
+            raise ImportError(f"Supabase backend requires 'supabase' package: {e}")
+
     else:
-        supported = ["redis", "blob"]
+        supported = ["redis", "blob", "supabase"]
         raise ValueError(f"Unsupported backend '{backend}'. Supported: {supported}")
 
 

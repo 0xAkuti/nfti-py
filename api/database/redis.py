@@ -183,8 +183,18 @@ class RedisManager(DatabaseManagerInterface):
             if not token_info_data:
                 return None
             
-            return NFTInspectionResult.model_validate(token_info_data)
-            
+            try:
+                return NFTInspectionResult.model_validate(token_info_data)
+            except Exception as e:
+                logger.warning(
+                    f"Cached data failed validation "
+                    f"(chain={chain_id}, contract={contract_address}, token={token_id}), "
+                    f"treating as cache miss: {e}"
+                )
+                return None
+
+        except RuntimeError:
+            raise
         except Exception as e:
             logger.error(f"Failed to retrieve NFT analysis: {e}")
             raise RuntimeError(f"Failed to retrieve analysis: {e}")

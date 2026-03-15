@@ -3,7 +3,6 @@ Configuration settings for the NFT Inspector API.
 """
 
 from typing import List
-from pydantic import field_validator
 from pydantic_settings import BaseSettings
 
 
@@ -14,9 +13,11 @@ class Settings(BaseSettings):
     API_KEYS: str = ""  # Will be converted to list
     
     # Database configuration
-    DATABASE_BACKEND: str = "blob"  # "redis" or "blob"
+    DATABASE_BACKEND: str = "blob"  # "redis", "blob", or "supabase"
     REDIS_URL: str = ""
     BLOB_READ_WRITE_TOKEN: str = ""
+    SUPABASE_URL: str = ""
+    SUPABASE_KEY: str = ""
     
     class Config:
         env_file = ".env"
@@ -41,6 +42,8 @@ class Settings(BaseSettings):
             return {"redis_url": self.REDIS_URL}
         elif self.DATABASE_BACKEND == "blob":
             return {"blob_read_write_token": self.BLOB_READ_WRITE_TOKEN}
+        elif self.DATABASE_BACKEND == "supabase":
+            return {"supabase_url": self.SUPABASE_URL, "supabase_key": self.SUPABASE_KEY}
         else:
             raise ValueError(f"Unknown database backend: {self.DATABASE_BACKEND}")
 
@@ -53,5 +56,7 @@ if settings.ENVIRONMENT == "production":
         raise ValueError("REDIS_URL is required for Redis backend in production")
     elif settings.DATABASE_BACKEND == "blob" and not settings.BLOB_READ_WRITE_TOKEN:
         raise ValueError("BLOB_READ_WRITE_TOKEN is required for Blob backend in production")
-    elif settings.DATABASE_BACKEND not in ["redis", "blob"]:
-        raise ValueError(f"Invalid DATABASE_BACKEND: {settings.DATABASE_BACKEND}. Must be 'redis' or 'blob'")
+    elif settings.DATABASE_BACKEND == "supabase" and (not settings.SUPABASE_URL or not settings.SUPABASE_KEY):
+        raise ValueError("SUPABASE_URL and SUPABASE_KEY are required for Supabase backend in production")
+    elif settings.DATABASE_BACKEND not in ["redis", "blob", "supabase"]:
+        raise ValueError(f"Invalid DATABASE_BACKEND: {settings.DATABASE_BACKEND}. Must be 'redis', 'blob', or 'supabase'")

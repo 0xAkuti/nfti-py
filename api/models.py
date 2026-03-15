@@ -26,7 +26,7 @@ class HealthResponse(BaseModel):
 
 class AnalysisResponse(BaseModel):
     """NFT analysis response."""
-    data: NFTInspectionResult
+    data: Union[NFTInspectionResult, TokenInfo]
     from_storage: bool = False
 
 
